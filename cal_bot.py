@@ -14,12 +14,34 @@ from bs4 import BeautifulSoup
 
 
 # ============================================================
-# CAL BOT V16
+# CAL BOT V17
 # EDITOR DE NOTICIAS DE CAL FAMILY
+#
+# OBJETIVO V17
+# ------------------------------------------------------------
+# Mantener un filtro fuerte contra:
+# - rumores
+# - leaks sin respaldo
+# - especulación
+# - opiniones
+# - reacciones
+# - clickbait
+# - recopilaciones
+# - repeticiones
+#
+# PERO permitir:
+# - noticias secundarias con fuente primaria identificable
+# - entrevistas
+# - declaraciones de desarrolladores
+# - documentos públicos
+# - anuncios de empresas
+# - información empresarial verificable
+# - información gubernamental
+# - datos concretos procedentes de medios fiables
 # ============================================================
 
 print("=" * 64)
-print("CAL BOT V16")
+print("CAL BOT V17")
 print("EDITOR DE NOTICIAS DE CAL FAMILY")
 print("=" * 64)
 
@@ -28,42 +50,19 @@ print("=" * 64)
 # CONFIGURACIÓN
 # ============================================================
 
-WEBHOOK = os.environ.get(
-    "NEWS_DRAFT_WEBHOOK",
-    ""
-).strip()
-
-GEMINI_KEY = os.environ.get(
-    "GEMINI_API_KEY",
-    ""
-).strip()
+WEBHOOK = os.environ.get("NEWS_DRAFT_WEBHOOK", "").strip()
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
 HISTORY_FILE = "seen_news.json"
 
 ROLE_ID = "1504921814759903343"
 
 MAX_HISTORY = 500
-
-# Noticias de las últimas 72 horas
 MAX_NEWS_AGE_HOURS = 72
+MAX_CANDIDATES = 18
 
-# V16 reduce las llamadas innecesarias a Gemini
-MAX_CANDIDATES = 8
-
-# Solo se hacen unas pocas solicitudes por modelo
-MAX_RETRIES_PER_MODEL = 1
-
-# Modelos
-GEMINI_MODELS = [
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash-lite"
-]
-
-
-# ============================================================
-# RSS
-# ============================================================
+MIN_ARTICLE_CHARS = 450
+MAX_ARTICLE_CHARS = 24000
 
 RSS_URL = (
     "https://news.google.com/rss/"
@@ -73,43 +72,26 @@ RSS_URL = (
     "&ceid=US:en"
 )
 
+# Orden de prioridad.
+# Si un modelo falla por 429/503, pasa al siguiente.
+GEMINI_MODELS = [
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite"
+]
+
 
 # ============================================================
 # VALIDAR SECRETS
 # ============================================================
 
 if not WEBHOOK:
-
-    print(
-        "ERROR: falta NEWS_DRAFT_WEBHOOK."
-    )
-
+    print("ERROR: falta NEWS_DRAFT_WEBHOOK.")
     raise SystemExit(1)
-
 
 if not GEMINI_KEY:
-
-    print(
-        "ERROR: falta GEMINI_API_KEY."
-    )
-
+    print("ERROR: falta GEMINI_API_KEY.")
     raise SystemExit(1)
-
-
-# ============================================================
-# HEADERS
-# ============================================================
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 "
-        "(X11; Linux x86_64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/124.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9"
-}
 
 
 # ============================================================
@@ -131,17 +113,9 @@ def normalize_text(text):
     }
 
     for old, new in replacements.items():
+        text = text.replace(old, new)
 
-        text = text.replace(
-            old,
-            new
-        )
-
-    text = re.sub(
-        r"https?://\S+",
-        "",
-        text
-    )
+    text = re.sub(r"https?://\S+", " ", text)
 
     text = re.sub(
         r"[^a-z0-9áéíóúüñ ]+",
@@ -230,7 +204,7 @@ def canonical_url(url):
 
 
 # ============================================================
-# ID DEL ARTÍCULO
+# ARTICLE ID
 # ============================================================
 
 def article_id(title, url):
@@ -243,6 +217,19 @@ def article_id(title, url):
 
     return hashlib.sha256(
         value.encode("utf-8")
+    ).hexdigest()
+
+
+# ============================================================
+# CONTENT HASH
+# ============================================================
+
+def content_hash(text):
+
+    normalized = normalize_text(text)
+
+    return hashlib.sha256(
+        normalized.encode("utf-8")
     ).hexdigest()
 
 
@@ -282,12 +269,7 @@ if os.path.exists(HISTORY_FILE):
 
             history = json.load(file)
 
-    except Exception as error:
-
-        print(
-            "Advertencia leyendo historial:",
-            error
-        )
+    except Exception:
 
         history = {}
 
@@ -301,7 +283,8 @@ if isinstance(history, list):
     history = {
         "published": history,
         "titles": [],
-        "content_hashes": []
+        "content_hashes": [],
+        "topics": []
     }
 
 
@@ -317,196 +300,162 @@ history.setdefault(
 
 history.setdefault(
     "content_hashes",
-    [])
+    []
+)
+
+history.setdefault(
+    "topics",
+    []
+)
 
 
 # ============================================================
-# FILTRO LOCAL V16
+# FILTRO LOCAL
+#
+# IMPORTANTE:
+# NO bloquear palabras como:
+# "developer"
+# "reveals"
+# "says"
+# "report"
+# "according to"
+#
+# porque pueden indicar una noticia válida.
 # ============================================================
 
 def obvious_local_reject(title):
 
-    normalized = normalize_text(
-        title
-    )
+    normalized = normalize_text(title)
 
-    # --------------------------------------------------------
-    # RUMORES / LEAKS
-    # --------------------------------------------------------
+    blocked_patterns = [
 
-    hard_block = [
+        # ----------------------------------------------------
+        # RUMORES / LEAKS
+        # ----------------------------------------------------
 
         "rumor",
-        "rumour",
-        "leak",
+        "rumoured",
+        "rumored",
+        "reportedly",
         "leaked",
+        "leak",
         "leaker",
         "insider",
+        "anonymous source",
         "unconfirmed",
-        "unverified",
-        "allegedly",
-        "supposedly",
-        "might",
-        "may reportedly",
-        "reportedly",
-        "could reportedly",
-        "anonymous source"
-    ]
 
-    for pattern in hard_block:
-
-        if pattern in normalized:
-
-            return True
-
-
-    # --------------------------------------------------------
-    # REACCIONES
-    # --------------------------------------------------------
-
-    reaction_block = [
+        # ----------------------------------------------------
+        # OPINIÓN / REACCIÓN
+        # ----------------------------------------------------
 
         "my thoughts",
         "what i think",
         "i think",
-        "reaction to",
-        "reacts to",
+        "my reaction",
         "reaction",
+        "reacts",
         "wowed",
-        "blown away",
-        "driving me crazy",
         "holy shit",
+        "driving me crazy",
         "impressions",
         "first impressions",
-        "fan reaction",
-        "fans react"
-    ]
 
-    for pattern in reaction_block:
-
-        if pattern in normalized:
-
-            return True
-
-
-    # --------------------------------------------------------
-    # OPINIONES / COLUMNAS
-    # --------------------------------------------------------
-
-    opinion_block = [
-
-        "opinion:",
-        "opinion -",
-        "editorial:",
-        "editorial -",
-        "why i think",
-        "my take on",
-        "i was wrong about",
-        "i love",
-        "i hate"
-    ]
-
-    for pattern in opinion_block:
-
-        if pattern in normalized:
-
-            return True
-
-
-    # --------------------------------------------------------
-    # GUÍAS / COMPRAS
-    # --------------------------------------------------------
-
-    guide_block = [
+        # ----------------------------------------------------
+        # GUÍAS / COMPRAS
+        # ----------------------------------------------------
 
         "best console",
         "best pc",
-        "best monitor",
-        "what console to buy",
-        "which console should",
+        "best gaming",
         "buy for gta",
+        "should you buy",
         "guide",
         "tips and tricks",
         "how to",
-        "walkthrough",
-        "review"
-    ]
 
-    for pattern in guide_block:
-
-        if pattern in normalized:
-
-            return True
-
-
-    # --------------------------------------------------------
-    # RECOPILACIONES
-    # --------------------------------------------------------
-
-    compilation_block = [
+        # ----------------------------------------------------
+        # RECOPILACIONES
+        # ----------------------------------------------------
 
         "everything leaked so far",
-        "everything we know",
         "everything revealed",
+        "everything we know",
         "all the actors",
         "all the details",
-        "all known details",
-        "complete list",
-        "full list",
-        "what we know so far"
+        "all you need to know",
+        "complete guide",
+
+        # ----------------------------------------------------
+        # ANÁLISIS PURAMENTE EDITORIAL
+        # ----------------------------------------------------
+
+        "why rockstar",
+        "why gta",
+        "analysis",
+        "opinion piece",
+
     ]
 
-    for pattern in compilation_block:
+    for pattern in blocked_patterns:
 
         if pattern in normalized:
 
             return True
-
-
-    # --------------------------------------------------------
-    # EXTENDED LOOK / TRAILER REACTION
-    # --------------------------------------------------------
-
-    extended_reaction = [
-
-        "extended look made me",
-        "extended look reaction",
-        "extended look impressions",
-        "extended look review",
-        "extended look thoughts",
-        "extended look wowed",
-        "extended look holy"
-    ]
-
-    for pattern in extended_reaction:
-
-        if pattern in normalized:
-
-            return True
-
 
     return False
+
+
+# ============================================================
+# DETECTAR FECHA
+# ============================================================
+
+def get_entry_datetime(entry):
+
+    parsed = getattr(
+        entry,
+        "published_parsed",
+        None
+    )
+
+    if not parsed:
+        parsed = getattr(
+            entry,
+            "updated_parsed",
+            None
+        )
+
+    if not parsed:
+        return None
+
+    try:
+
+        timestamp = calendar.timegm(
+            parsed
+        )
+
+        return datetime.fromtimestamp(
+            timestamp,
+            timezone.utc
+        )
+
+    except Exception:
+
+        return None
 
 
 # ============================================================
 # BUSCAR RSS
 # ============================================================
 
-print(
-    "Buscando noticias nuevas..."
-)
+print("Buscando noticias nuevas...")
 
 feed = feedparser.parse(
     RSS_URL
 )
 
-
 if not feed.entries:
 
-    print(
-        "No se encontraron noticias."
-    )
-
+    print("No se encontraron noticias.")
     raise SystemExit(0)
 
 
@@ -533,9 +482,7 @@ for entry in feed.entries:
         ""
     ).strip()
 
-
     if not title or not google_url:
-
         continue
 
 
@@ -557,37 +504,13 @@ for entry in feed.entries:
     # FECHA
     # --------------------------------------------------------
 
-    published_time = None
-
-    if getattr(
-        entry,
-        "published_parsed",
-        None
-    ):
-
-        try:
-
-            timestamp = calendar.timegm(
-                entry.published_parsed
-            )
-
-            published_time = (
-                datetime.fromtimestamp(
-                    timestamp,
-                    timezone.utc
-                )
-            )
-
-        except Exception:
-
-            published_time = None
-
+    published_time = get_entry_datetime(
+        entry
+    )
 
     if published_time:
 
-        age = (
-            now - published_time
-        )
+        age = now - published_time
 
         if age > timedelta(
             hours=MAX_NEWS_AGE_HOURS
@@ -604,7 +527,6 @@ for entry in feed.entries:
         google_url
     )
 
-
     news_id = article_id(
         title,
         clean_url
@@ -619,7 +541,7 @@ for entry in feed.entries:
 
 
     # --------------------------------------------------------
-    # TÍTULO REPETIDO
+    # DUPLICADO DE TÍTULO
     # --------------------------------------------------------
 
     duplicate = False
@@ -628,13 +550,14 @@ for entry in feed.entries:
         "titles"
     ]:
 
-        if similarity(
+        score = similarity(
             title,
             old_title
-        ) >= 0.84:
+        )
+
+        if score >= 0.86:
 
             duplicate = True
-
             break
 
 
@@ -682,7 +605,13 @@ for entry in feed.entries:
 
         "canonical_url": clean_url,
 
-        "rss_content": rss_content
+        "rss_content": rss_content,
+
+        "published_time": (
+            published_time.isoformat()
+            if published_time
+            else ""
+        )
 
     })
 
@@ -699,24 +628,278 @@ for entry in feed.entries:
 if not candidates:
 
     print("=" * 64)
-
-    print(
-        "NO HAY NOTICIAS NUEVAS."
-    )
-
+    print("NO HAY NOTICIAS NUEVAS.")
     print("=" * 64)
 
     raise SystemExit(0)
 
 
 print("=" * 64)
-
 print(
     f"CANDIDATAS ENCONTRADAS: "
     f"{len(candidates)}"
 )
-
 print("=" * 64)
+
+
+# ============================================================
+# HEADERS
+# ============================================================
+
+headers = {
+
+    "User-Agent":
+        "Mozilla/5.0 "
+        "(Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
+        "Chrome/124.0 Safari/537.36",
+
+    "Accept-Language":
+        "en-US,en;q=0.9"
+
+}
+
+
+# ============================================================
+# EXTRACCIÓN AVANZADA DE ARTÍCULO
+# ============================================================
+
+def extract_article(response):
+
+    if not response:
+        return ""
+
+    try:
+
+        soup = BeautifulSoup(
+            response.text,
+            "html.parser"
+        )
+
+    except Exception:
+
+        return ""
+
+
+    collected = []
+
+
+    # --------------------------------------------------------
+    # META DESCRIPTION
+    # --------------------------------------------------------
+
+    meta_selectors = [
+
+        ("meta", {
+            "name": "description"
+        }),
+
+        ("meta", {
+            "property": "og:description"
+        }),
+
+        ("meta", {
+            "name": "twitter:description"
+        })
+
+    ]
+
+
+    for tag_name, attrs in meta_selectors:
+
+        tag = soup.find(
+            tag_name,
+            attrs
+        )
+
+        if tag:
+
+            value = tag.get(
+                "content",
+                ""
+            ).strip()
+
+            if len(value) >= 80:
+
+                collected.append(
+                    value
+                )
+
+
+    # --------------------------------------------------------
+    # JSON-LD
+    # --------------------------------------------------------
+
+    for script in soup.find_all(
+        "script",
+        type="application/ld+json"
+    ):
+
+        try:
+
+            raw = script.string
+
+            if not raw:
+                continue
+
+            data = json.loads(
+                raw
+            )
+
+            if isinstance(
+                data,
+                dict
+            ):
+
+                article_body = data.get(
+                    "articleBody",
+                    ""
+                )
+
+                description = data.get(
+                    "description",
+                    ""
+                )
+
+                if article_body:
+
+                    collected.append(
+                        str(article_body)
+                    )
+
+                if description:
+
+                    collected.append(
+                        str(description)
+                    )
+
+            elif isinstance(
+                data,
+                list
+            ):
+
+                for item in data:
+
+                    if not isinstance(
+                        item,
+                        dict
+                    ):
+
+                        continue
+
+                    article_body = item.get(
+                        "articleBody",
+                        ""
+                    )
+
+                    description = item.get(
+                        "description",
+                        ""
+                    )
+
+                    if article_body:
+
+                        collected.append(
+                            str(article_body)
+                        )
+
+                    if description:
+
+                        collected.append(
+                            str(description)
+                        )
+
+        except Exception:
+
+            continue
+
+
+    # --------------------------------------------------------
+    # LIMPIAR ELEMENTOS
+    # --------------------------------------------------------
+
+    for element in soup([
+
+        "script",
+        "style",
+        "noscript",
+        "svg",
+        "nav",
+        "footer",
+        "header",
+        "form",
+        "aside",
+        "iframe"
+
+    ]):
+
+        element.decompose()
+
+
+    # --------------------------------------------------------
+    # PÁRRAFOS
+    # --------------------------------------------------------
+
+    for paragraph in soup.find_all(
+        "p"
+    ):
+
+        text = paragraph.get_text(
+            " ",
+            strip=True
+        )
+
+        if len(text) >= 45:
+
+            collected.append(
+                text
+            )
+
+
+    # --------------------------------------------------------
+    # DEDUPLICAR
+    # --------------------------------------------------------
+
+    final_parts = []
+
+    seen = set()
+
+    for item in collected:
+
+        item = re.sub(
+            r"\s+",
+            " ",
+            item
+        ).strip()
+
+        if not item:
+            continue
+
+        key = normalize_text(
+            item
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(
+            key
+        )
+
+        final_parts.append(
+            item
+        )
+
+
+    text = "\n".join(
+        final_parts
+    )
+
+
+    return text[
+        :MAX_ARTICLE_CHARS
+    ]
 
 
 # ============================================================
@@ -759,9 +942,9 @@ def ask_gemini(prompt):
 
             "generationConfig": {
 
-                "temperature": 0.1,
+                "maxOutputTokens": 2400,
 
-                "maxOutputTokens": 2200,
+                "temperature": 0.15,
 
                 "responseMimeType":
                     "application/json"
@@ -771,9 +954,7 @@ def ask_gemini(prompt):
         }
 
 
-        for attempt in range(
-            MAX_RETRIES_PER_MODEL
-        ):
+        for attempt in range(2):
 
             try:
 
@@ -804,30 +985,27 @@ def ask_gemini(prompt):
                     return response.json()
 
 
-                # ------------------------------------------------
-                # RATE LIMIT / SERVER ERROR
-                # ------------------------------------------------
-
                 if response.status_code in (
+
                     429,
                     500,
                     502,
                     503,
                     504
+
                 ):
 
                     print(
-                        "Modelo temporalmente no disponible."
+                        "Modelo temporalmente "
+                        "no disponible."
                     )
 
-                    # No hacemos 3 esperas largas.
-                    # Pasamos directamente al siguiente modelo.
-                    break
+                    if attempt == 0:
 
+                        time.sleep(5)
 
-                # ------------------------------------------------
-                # OTRO ERROR
-                # ------------------------------------------------
+                    continue
+
 
                 print(
                     response.text[:1500]
@@ -836,14 +1014,16 @@ def ask_gemini(prompt):
                 break
 
 
-            except requests.RequestException as error:
+            except Exception as error:
 
                 print(
                     "Error Gemini:",
                     error
                 )
 
-                break
+                if attempt == 0:
+
+                    time.sleep(5)
 
 
     return None
@@ -856,61 +1036,53 @@ def ask_gemini(prompt):
 def parse_gemini(result):
 
     if not result:
-
         return None
-
 
     try:
 
-        candidates_response = result.get(
+        candidates = result.get(
             "candidates",
             []
         )
 
-
-        if not candidates_response:
-
+        if not candidates:
             return None
 
 
-        content = (
-            candidates_response[0]
+        parts = (
+
+            candidates[0]
             .get(
                 "content",
                 {}
             )
-        )
+            .get(
+                "parts",
+                []
+            )
 
-
-        parts = content.get(
-            "parts",
-            []
         )
 
 
         if not parts:
-
             return None
 
 
         text = (
+
             parts[0]
             .get(
                 "text",
                 ""
             )
             .strip()
+
         )
 
 
         if not text:
-
             return None
 
-
-        # --------------------------------------------------------
-        # QUITAR MARKDOWN
-        # --------------------------------------------------------
 
         text = re.sub(
             r"^```json\s*",
@@ -926,43 +1098,9 @@ def parse_gemini(result):
         )
 
 
-        # --------------------------------------------------------
-        # ENCONTRAR JSON
-        # --------------------------------------------------------
-
-        start = text.find(
-            "{"
-        )
-
-        end = text.rfind(
-            "}"
-        )
-
-
-        if start == -1 or end == -1:
-
-            return None
-
-
-        text = text[
-            start:end + 1
-        ]
-
-
-        data = json.loads(
+        return json.loads(
             text
         )
-
-
-        if not isinstance(
-            data,
-            dict
-        ):
-
-            return None
-
-
-        return data
 
 
     except Exception as error:
@@ -973,21 +1111,6 @@ def parse_gemini(result):
         )
 
         return None
-
-
-# ============================================================
-# HISTORIAL PARA EL PROMPT
-# ============================================================
-
-previous_titles = history[
-    "titles"
-][-100:]
-
-
-previous_titles_text = "\n".join(
-    f"- {title}"
-    for title in previous_titles
-)
 
 
 # ============================================================
@@ -1021,7 +1144,7 @@ for index, candidate in enumerate(
 
 
     # --------------------------------------------------------
-    # DESCARGAR ARTÍCULO
+    # OBTENER ARTÍCULO
     # --------------------------------------------------------
 
     article_text = ""
@@ -1037,9 +1160,9 @@ for index, candidate in enumerate(
 
             candidate["google_url"],
 
-            headers=HEADERS,
+            headers=headers,
 
-            timeout=25,
+            timeout=30,
 
             allow_redirects=True
 
@@ -1054,68 +1177,14 @@ for index, candidate in enumerate(
 
         final_source_url = (
             response.url
+            or candidate["google_url"]
         )
 
 
         if response.ok:
 
-            soup = BeautifulSoup(
-
-                response.text,
-
-                "html.parser"
-
-            )
-
-
-            # ------------------------------------------------
-            # ELIMINAR BASURA HTML
-            # ------------------------------------------------
-
-            for element in soup([
-
-                "script",
-                "style",
-                "noscript",
-                "svg",
-                "nav",
-                "footer",
-                "header",
-                "form",
-                "aside"
-
-            ]):
-
-                element.decompose()
-
-
-            paragraphs = []
-
-
-            for paragraph in soup.find_all(
-                "p"
-            ):
-
-                text = paragraph.get_text(
-                    " ",
-                    strip=True
-                )
-
-
-                if len(text) >= 45:
-
-                    paragraphs.append(
-                        text
-                    )
-
-
-            article_text = "\n".join(
-                paragraphs
-            )
-
-
-            article_text = (
-                article_text[:24000]
+            article_text = extract_article(
+                response
             )
 
 
@@ -1128,24 +1197,21 @@ for index, candidate in enumerate(
 
 
     # --------------------------------------------------------
-    # ELEGIR CONTENIDO
+    # FALLBACK RSS
     # --------------------------------------------------------
 
-    if len(article_text) >= 300:
+    if len(article_text) >= MIN_ARTICLE_CHARS:
 
-        source_content = (
-            article_text
-        )
+        source_content = article_text
 
-    elif len(
-        candidate["rss_content"]
-    ) >= 100:
+    else:
 
         source_content = (
             candidate["rss_content"]
         )
 
-    else:
+
+    if len(source_content) < 120:
 
         print(
             "Descartada: contenido insuficiente."
@@ -1154,30 +1220,57 @@ for index, candidate in enumerate(
         continue
 
 
-    # ========================================================
-    # PROMPT V16
-    # ========================================================
+    # --------------------------------------------------------
+    # HISTORIAL
+    # --------------------------------------------------------
+
+    previous_titles = history[
+        "titles"
+    ][-100:]
+
+
+    previous_titles_text = "\n".join(
+
+        f"- {title}"
+
+        for title in previous_titles
+
+    )
+
+
+    # --------------------------------------------------------
+    # PROMPT V17
+    # --------------------------------------------------------
 
     prompt = f"""
-Eres el editor principal de CAL FAMILY,
-una comunidad dedicada a Grand Theft Auto VI.
+Eres el EDITOR PRINCIPAL de noticias de CAL FAMILY.
 
-Tu trabajo es decidir si este artículo merece convertirse
-en una noticia para la comunidad.
+CAL FAMILY cubre exclusivamente información relevante
+sobre Grand Theft Auto VI.
 
-Debes ser ESTRICTO con rumores, especulación, opiniones,
-reacciones y contenido repetido.
+Tu objetivo NO es publicar todo.
 
-Pero NO debes exigir que cada noticia venga directamente
-de Rockstar Games.
+Tu objetivo es encontrar noticias que tengan una
+NOVEDAD FACTUAL REAL y evitar:
+
+- rumores
+- especulación
+- opiniones
+- reacciones
+- clickbait
+- teorías
+- leaks sin respaldo
+- contenido reciclado
+- artículos que solamente resumen algo ya conocido
+- artículos que solamente reaccionan al Extended Look
 
 ============================================================
-REGLA CENTRAL
+REGLA PRINCIPAL V17
 ============================================================
 
-PUBLICAR solamente cuando exista:
+Una noticia puede PUBLICARSE si cumple:
 
-NOVEDAD REAL
+NOVEDAD FACTUAL
 +
 DATO CONCRETO
 +
@@ -1187,157 +1280,244 @@ CONTEXTO SUFICIENTE
 +
 RELEVANCIA PARA GTA VI
 
-Si falta alguno de estos elementos importantes,
+NO es obligatorio que la fuente sea Rockstar Games.
+
+============================================================
+FUENTES VÁLIDAS
+============================================================
+
+Acepta información procedente de:
+
+1. Rockstar Games.
+2. Take-Two Interactive.
+3. Rockstar North.
+4. Un desarrollador identificado.
+5. Un director identificado.
+6. Un productor identificado.
+7. Un actor identificado.
+8. Un representante oficial.
+9. Una empresa involucrada directamente.
+10. Una autoridad gubernamental.
+11. Un documento público.
+12. Una entrevista.
+13. Una presentación empresarial.
+14. Un informe financiero.
+15. Un medio periodístico fiable que cite claramente
+    cualquiera de las fuentes anteriores.
+16. Una fuente secundaria fiable que presente
+    evidencia concreta y atribuible.
+
+============================================================
+MUY IMPORTANTE
+============================================================
+
+NO descartes una noticia solamente porque:
+
+- no proviene directamente de Rockstar;
+- fue publicada por un medio secundario;
+- contiene análisis además de información factual;
+- no tiene una cita textual;
+- el título parece llamativo.
+
+Primero lee el contenido.
+
+Si el artículo dice, por ejemplo:
+
+"Rob Nelson, co-head de Rockstar North, explicó que..."
+
+y proporciona contexto suficiente:
+
+PUBLICAR.
+
+Si dice:
+
+"Según Rockstar Games..."
+
+y desarrolla el dato:
+
+PUBLICAR.
+
+Si dice:
+
+"Un documento presentado por una autoridad..."
+
+y el documento está explicado:
+
+PUBLICAR.
+
+Si dice:
+
+"Los analistas creen que..."
+
+sin evidencia adicional:
+
 DESCARTAR.
 
 ============================================================
-FUENTES ACEPTABLES
+REGLA DE ATRIBUCIÓN
 ============================================================
 
-Puede ser información procedente de:
+La pregunta NO es:
 
-- Rockstar Games
-- Take-Two Interactive
-- Un desarrollador identificado
-- Un empleado identificado
-- Un actor identificado
-- Una empresa relacionada directamente
-- Una autoridad gubernamental
-- Un documento público
-- Una entrevista
-- Una presentación
-- Un comunicado
-- Un medio periodístico fiable
-- Una fuente secundaria que cite claramente
-  una fuente identificable
+"¿Rockstar lo confirmó?"
 
-Una fuente secundaria NO debe ser descartada
-automáticamente.
+La pregunta correcta es:
 
-Lo importante es saber:
+"¿Existe una fuente identificable que permita verificar
+de dónde sale esta información?"
 
-¿De dónde sale realmente la información?
+Si la respuesta es SÍ:
+
+puede publicarse.
+
+Si la respuesta es NO:
+
+descartar.
 
 ============================================================
-DESCARTAR
+EJEMPLOS
 ============================================================
 
-DESCARTA:
+CASO A:
 
-- Rumores.
-- Leaks.
-- Supuestos leaks.
-- Insider anónimo.
-- Predicciones.
-- Teorías.
-- Especulación.
-- Opiniones.
-- Reacciones.
-- Reviews.
-- Impresiones.
-- Guías.
-- Recomendaciones de compra.
-- Comparaciones de consolas.
-- Artículos de "todo lo que sabemos".
-- Recopilaciones.
-- Clickbait.
-- Análisis sin dato nuevo.
-- Artículos que simplemente repiten información conocida.
-- Artículos que solamente reaccionan al Extended Look.
-- Artículos que solamente resumen el Extended Look.
-- Artículos que solamente describen escenas ya mostradas.
-- Artículos que convierten una posibilidad en una afirmación.
-- Información sin fuente identificable.
+"Rob Nelson explica por qué GTA VI solo tiene dos protagonistas."
+
+→ PUBLICAR.
+
+CASO B:
+
+"Un desarrollador de Rockstar explica una decisión
+de diseño durante una entrevista."
+
+→ PUBLICAR.
+
+CASO C:
+
+"Un medio afirma que GTA VI probablemente tendrá
+60 FPS."
+
+→ DESCARTAR.
+
+CASO D:
+
+"Un insider asegura que GTA VI tendrá 100 misiones."
+
+→ DESCARTAR.
+
+CASO E:
+
+"Take-Two informa una cifra concreta de preventas
+en una presentación financiera."
+
+→ PUBLICAR.
+
+CASO F:
+
+"Un analista estima que GTA VI venderá 100 millones."
+
+→ DESCARTAR.
+
+CASO G:
+
+"Un gobierno local publica una propuesta relacionada
+con el lanzamiento de GTA VI."
+
+→ PUBLICAR si la propuesta está documentada.
+
+CASO H:
+
+"IGN dice que el Extended Look es increíble."
+
+→ DESCARTAR.
+
+CASO I:
+
+"Un medio analiza el Extended Look pero además cita
+una nueva declaración de un desarrollador."
+
+→ PUBLICAR si esa declaración contiene información nueva.
+
+CASO J:
+
+"Artículo recopilando todo lo visto en el Extended Look."
+
+→ DESCARTAR.
+
+CASO K:
+
+"Un medio revela que Rockstar cambió una característica
+después de una entrevista con sus desarrolladores."
+
+→ PUBLICAR si la fuente está identificada.
+
+============================================================
+OPINIÓN VS INFORMACIÓN
+============================================================
+
+Un artículo NO debe descartarse automáticamente porque
+contenga opinión.
+
+Muchos artículos periodísticos contienen:
+
+- análisis
+- contexto
+- opinión editorial
+
+junto con información factual.
+
+Debes separar ambas cosas.
+
+Si existe un dato nuevo verificable:
+
+PUBLICAR.
+
+Si todo el artículo es opinión:
+
+DESCARTAR.
 
 ============================================================
 EXTENDED LOOK
 ============================================================
 
-IMPORTANTE:
+NO publiques artículos que simplemente:
 
-NO publiques un artículo simplemente porque habla
-del GTA VI Extended Look.
+- reaccionen al Extended Look;
+- digan que se ve increíble;
+- recopilen detalles ya mostrados;
+- identifiquen personajes sin nueva información;
+- hagan teorías basadas en imágenes;
+- expliquen escenas ya conocidas.
 
-Ejemplos que deben DESCARTARSE:
+PERO:
 
-"Todo lo que vimos en el Extended Look."
+Si después del Extended Look aparece una entrevista,
+declaración o información empresarial nueva:
 
-"Mi reacción al Extended Look."
-
-"Los fans están sorprendidos por el Extended Look."
-
-"El Extended Look demuestra que GTA VI será increíble."
-
-"Todos los actores que aparecen en el Extended Look."
-
-Sin embargo:
-
-Si después del Extended Look un medio publica una
-información CONCRETA obtenida de una entrevista,
-declaración, documento o fuente identificable,
 puede PUBLICARSE.
-
-La existencia del Extended Look NO es suficiente.
-
-============================================================
-ANÁLISIS
-============================================================
-
-No descartes automáticamente un artículo porque contiene
-análisis.
-
-Pregunta:
-
-¿Dentro del artículo existe un dato NUEVO y VERIFICABLE?
-
-Si sí:
-
-PUBLICAR.
-
-Si solamente existe análisis:
-
-DESCARTAR.
-
-============================================================
-FUENTES SECUNDARIAS
-============================================================
-
-Ejemplo:
-
-"TechPowerUp dice que GTA VI durará 80 horas."
-
-No publiques automáticamente.
-
-Busca dentro del artículo:
-
-¿Identifica al desarrollador?
-
-¿Existe una entrevista?
-
-¿Existe una declaración concreta?
-
-¿Existe contexto?
-
-Si sí:
-
-puede ser PUBLICAR.
-
-Si solamente repite una afirmación sin respaldo:
-
-DESCARTAR.
 
 ============================================================
 REPETICIONES
 ============================================================
 
-Compara con el historial.
+Compara la noticia con el historial.
 
-Si la noticia básicamente comunica lo mismo que
-una noticia anterior:
+No te limites a comparar títulos.
 
-DESCARTAR.
+Compara también:
 
-Aunque el título sea diferente.
+- dato principal;
+- afirmación;
+- sujeto;
+- acontecimiento;
+- fuente;
+- información central.
+
+Si dos artículos hablan esencialmente de la misma noticia:
+
+DESCARTAR el segundo.
+
+Una redacción diferente NO convierte una noticia repetida
+en una noticia nueva.
 
 ============================================================
 HISTORIAL
@@ -1350,99 +1530,89 @@ ARTÍCULO ACTUAL
 ============================================================
 
 TÍTULO:
-
 {candidate["title"]}
 
 URL:
-
 {final_source_url}
 
 CONTENIDO:
-
 {source_content}
 
 ============================================================
-PROCESO DE DECISIÓN
+PROCESO OBLIGATORIO
 ============================================================
 
-Antes de responder:
+Antes de decidir, identifica internamente:
 
-1. Identifica el dato principal.
-2. Identifica quién proporciona ese dato.
-3. Determina si la fuente es identificable.
-4. Determina si el dato puede verificarse.
-5. Determina si es realmente nuevo.
-6. Comprueba si ya aparece en el historial.
-7. Comprueba si es opinión o análisis.
-8. Comprueba si es rumor o especulación.
-9. Comprueba si solamente habla del Extended Look.
-10. Decide.
+1. ¿Cuál es el dato principal?
+2. ¿Qué información es realmente nueva?
+3. ¿Quién proporciona esa información?
+4. ¿La fuente está identificada?
+5. ¿Existe contexto suficiente?
+6. ¿Es una noticia o solamente una opinión?
+7. ¿Es rumor?
+8. ¿Es especulación?
+9. ¿Es una repetición?
+10. ¿Ya apareció este mismo dato en el historial?
 
-============================================================
-PUBLICAR
-============================================================
+Si no puedes identificar un dato factual nuevo:
 
-Solo devuelve PUBLICAR si puedes explicar claramente
-qué dato nuevo contiene el artículo.
-
-El campo "reason" debe explicar brevemente:
-
-- cuál es la novedad
-- quién la respalda
+DESCARTAR.
 
 ============================================================
-FORMATO
+DECISIÓN
 ============================================================
 
 Devuelve ÚNICAMENTE JSON válido.
 
-NO markdown.
+PUBLICAR:
 
-Si DESCARTAR:
+{{
+  "decision": "PUBLICAR",
+  "reason": "Motivo breve explicando el dato nuevo y su fuente",
+  "category": "Noticias",
+  "title": "Título en español",
+  "content": "Contenido final"
+}}
+
+DESCARTAR:
 
 {{
   "decision": "DESCARTAR",
-  "reason": "Motivo breve y específico",
+  "reason": "Motivo breve",
   "category": "Noticias",
   "title": "",
   "content": ""
 }}
 
-Si PUBLICAR:
-
-{{
-  "decision": "PUBLICAR",
-  "reason": "Dato nuevo y fuente que lo respalda",
-  "category": "Noticias",
-  "title": "Título en español",
-  "content": "Noticia final en español"
-}}
-
 ============================================================
-CONTENIDO DE LA NOTICIA
+SI PUBLICAS
 ============================================================
 
-Si PUBLICAS:
+Escribe en español.
 
-- Español natural.
-- Profesional.
-- 500-1100 caracteres.
-- No inventar datos.
-- No inventar citas.
-- No exagerar.
-- No presentar rumores como hechos.
-- No incluir la URL dentro del contenido.
-- No utilizar frases como "según rumores".
-- Si es una fuente secundaria, dejar claro de dónde
-  procede la información.
+Entre 500 y 1100 caracteres.
 
-Usa esta estructura cuando sea apropiado:
+El contenido debe:
+
+- ser informativo;
+- ser natural;
+- ser profesional;
+- explicar el dato;
+- indicar quién proporcionó la información;
+- no inventar citas;
+- no inventar datos;
+- no convertir rumores en hechos.
+
+NO incluyas URL dentro del contenido.
+
+Cuando sea apropiado usa:
 
 [Introducción]
 
 **El dato clave**
 
-[Información concreta]
+[Dato concreto]
 
 **Por qué importa**
 
@@ -1450,21 +1620,44 @@ Usa esta estructura cuando sea apropiado:
 
 ⚠️ **Contexto**
 
-[Origen de la información]
+[Fuente o atribución]
 
 ============================================================
-REGLA FINAL
+REGLA FINAL V17
 ============================================================
 
-PUBLICAR:
+FUENTE IDENTIFICABLE
++
+DATO NUEVO
++
+EVIDENCIA/CONTEXTO
++
+RELEVANCIA
+=
+PUBLICAR
 
-NOVEDAD + DATO CONCRETO + FUENTE IDENTIFICABLE
-+ INFORMACIÓN VERIFICABLE.
+RUMOR
++
+ESPECULACIÓN
++
+OPINIÓN SIN DATO
++
+REPETICIÓN
+=
+DESCARTAR
 
-DESCARTAR:
+NO confundas:
 
-RUMOR + ESPECULACIÓN + OPINIÓN + REACCIÓN
-+ REPETICIÓN + INFORMACIÓN SIN RESPALDO.
+"no confirmado por Rockstar"
+
+con
+
+"no verificable".
+
+Una noticia secundaria puede ser válida si identifica
+correctamente la fuente primaria.
+
+Tu prioridad es CALIDAD, no cantidad.
 """
 
 
@@ -1472,10 +1665,6 @@ RUMOR + ESPECULACIÓN + OPINIÓN + REACCIÓN
         "CAL BOT ESTÁ EVALUANDO..."
     )
 
-
-    # --------------------------------------------------------
-    # GEMINI
-    # --------------------------------------------------------
 
     gemini_raw = ask_gemini(
         prompt
@@ -1490,15 +1679,12 @@ RUMOR + ESPECULACIÓN + OPINIÓN + REACCIÓN
     if not result:
 
         print(
-            "No se pudo interpretar la respuesta de Gemini."
+            "No se pudo interpretar "
+            "la respuesta."
         )
 
         continue
 
-
-    # --------------------------------------------------------
-    # DECISIÓN
-    # --------------------------------------------------------
 
     decision = str(
         result.get(
@@ -1516,31 +1702,23 @@ RUMOR + ESPECULACIÓN + OPINIÓN + REACCIÓN
     ).strip()
 
 
-    # Seguridad:
-    # cualquier respuesta que no sea PUBLICAR
-    # se considera DESCARTAR.
+    # --------------------------------------------------------
+    # DESCARTAR
+    # --------------------------------------------------------
 
     if decision != "PUBLICAR":
 
         print("=" * 64)
-
-        print(
-            "DESCARTADA POR CAL BOT"
-        )
-
+        print("DESCARTADA POR CAL BOT")
         print("=" * 64)
-
-        print(
-            reason or
-            "No cumple los criterios editoriales."
-        )
+        print(reason)
 
         continue
 
 
-    # ========================================================
-    # DATOS GENERADOS
-    # ========================================================
+    # --------------------------------------------------------
+    # DATOS PUBLICABLES
+    # --------------------------------------------------------
 
     ai_title = str(
         result.get(
@@ -1566,99 +1744,18 @@ RUMOR + ESPECULACIÓN + OPINIÓN + REACCIÓN
     ).strip()
 
 
-    if not ai_title:
+    if not ai_title or not ai_content:
 
         print(
-            "Descartada: Gemini no generó título."
+            "Descartada: contenido generado inválido."
         )
 
         continue
-
-
-    if not ai_content:
-
-        print(
-            "Descartada: Gemini no generó contenido."
-        )
-
-        continue
-
-
-    # ========================================================
-    # SEGURIDAD EXTRA
-    # ========================================================
-
-    # Si Gemini intenta introducir URLs dentro
-    # del contenido, las eliminamos.
-
-    ai_content = re.sub(
-        r"https?://\S+",
-        "",
-        ai_content
-    ).strip()
 
 
     # --------------------------------------------------------
-    # BLOQUEAR RESPUESTAS SOSPECHOSAS
+    # SEGURIDAD CONTRA REPETICIONES
     # --------------------------------------------------------
-
-    suspicious_phrases = [
-
-        "según rumores",
-
-        "podría ser",
-
-        "podría tener",
-
-        "se espera que",
-
-        "se cree que",
-
-        "se especula que",
-
-        "supuestamente",
-
-        "al parecer",
-
-        "podría indicar",
-
-        "los fans creen",
-
-        "creemos que"
-
-    ]
-
-
-    normalized_content = normalize_text(
-        ai_content
-    )
-
-
-    suspicious_count = 0
-
-
-    for phrase in suspicious_phrases:
-
-        if normalize_text(
-            phrase
-        ) in normalized_content:
-
-            suspicious_count += 1
-
-
-    if suspicious_count >= 2:
-
-        print(
-            "Descartada: contenido generado "
-            "contiene demasiadas afirmaciones especulativas."
-        )
-
-        continue
-
-
-    # ========================================================
-    # DUPLICADO POR TÍTULO GENERADO
-    # ========================================================
 
     repeated = False
 
@@ -1670,10 +1767,9 @@ RUMOR + ESPECULACIÓN + OPINIÓN + REACCIÓN
         if similarity(
             ai_title,
             old_title
-        ) >= 0.86:
+        ) >= 0.88:
 
             repeated = True
-
             break
 
 
@@ -1687,34 +1783,38 @@ RUMOR + ESPECULACIÓN + OPINIÓN + REACCIÓN
         continue
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # HASH DEL CONTENIDO FUENTE
-    # ========================================================
+    # --------------------------------------------------------
 
-    content_hash = hashlib.sha256(
-        normalize_text(
-            source_content
-        ).encode(
-            "utf-8"
-        )
-    ).hexdigest()
+    source_hash = content_hash(
+        source_content
+    )
 
 
-    if content_hash in history[
+    if source_hash in history[
         "content_hashes"
     ]:
 
         print(
-            "Descartada: contenido idéntico "
-            "a una noticia anterior."
+            "Descartada: contenido idéntico."
         )
 
         continue
 
 
-    # ========================================================
+    # --------------------------------------------------------
+    # HASH DEL DATO GENERADO
+    # --------------------------------------------------------
+
+    generated_hash = content_hash(
+        ai_content
+    )
+
+
+    # --------------------------------------------------------
     # SELECCIONADA
-    # ========================================================
+    # --------------------------------------------------------
 
     selected = {
 
@@ -1734,26 +1834,16 @@ RUMOR + ESPECULACIÓN + OPINIÓN + REACCIÓN
             final_source_url,
 
         "content_hash":
-            content_hash,
+            source_hash,
+
+        "generated_hash":
+            generated_hash,
 
         "reason":
             reason
 
     }
 
-
-    print("=" * 64)
-
-    print(
-        "NOTICIA SELECCIONADA POR CAL BOT."
-    )
-
-    print(
-        "Motivo:",
-        reason
-    )
-
-    print("=" * 64)
 
     break
 
@@ -1765,18 +1855,17 @@ RUMOR + ESPECULACIÓN + OPINIÓN + REACCIÓN
 if selected is None:
 
     print("=" * 64)
-
     print(
-        "NINGUNA NOTICIA CUMPLIÓ LOS CRITERIOS."
+        "NINGUNA NOTICIA CUMPLIÓ "
+        "LOS CRITERIOS."
     )
-
     print("=" * 64)
 
     raise SystemExit(0)
 
 
 # ============================================================
-# DATOS FINALES
+# LIMPIAR CONTENIDO
 # ============================================================
 
 ai_title = selected[
@@ -1796,27 +1885,17 @@ final_source_url = selected[
 ]
 
 
-# ============================================================
-# LIMPIEZA
-# ============================================================
-
-remove_phrases = [
+for unwanted in [
 
     "🔗 **Fuente:**",
-
     "🔗 **Fuente original:**",
+    "Fuente:",
+    "Fuente original:"
 
-    "**Fuente:**",
-
-    "**Fuente original:**"
-
-]
-
-
-for phrase in remove_phrases:
+]:
 
     ai_content = ai_content.replace(
-        phrase,
+        unwanted,
         ""
     )
 
@@ -1854,31 +1933,64 @@ final_message = (
 
     f"⚠️ **REVISIÓN REQUERIDA**\n"
 
-    f"Este contenido fue preparado por Cal Bot "
-    f"como borrador editorial. "
-    f"Revisa la información antes de publicarlo "
-    f"en #noticias.\n\n"
+    f"Este contenido fue preparado por "
+    f"Cal Bot como borrador editorial. "
+    f"Revisa la información antes de "
+    f"publicarlo en #noticias.\n\n"
 
-    f"-# Cal Bot V16 · {date_text}"
+    f"-# Cal Bot V17 · {date_text}"
 
 )
 
 
 # ============================================================
-# DISCORD: LÍMITE
+# LÍMITE DISCORD
 # ============================================================
 
-DISCORD_LIMIT = 1950
-
-
-if len(final_message) > DISCORD_LIMIT:
+if len(final_message) > 1950:
 
     print(
-        "Mensaje demasiado largo. Recortando contenido..."
+        "Mensaje demasiado largo. "
+        "Recortando..."
     )
 
 
-    prefix = (
+    fixed_length = (
+
+        len(final_message)
+        - len(ai_content)
+
+    )
+
+
+    allowed = (
+
+        1950
+        - fixed_length
+        - 10
+
+    )
+
+
+    if allowed < 300:
+
+        print(
+            "Descartada: mensaje "
+            "demasiado largo."
+        )
+
+        raise SystemExit(0)
+
+
+    ai_content = (
+
+        ai_content[:allowed]
+        .rstrip()
+
+    )
+
+
+    final_message = (
 
         f"<@&{ROLE_ID}>\n\n"
 
@@ -1886,88 +1998,30 @@ if len(final_message) > DISCORD_LIMIT:
 
         f"# {ai_title}\n\n"
 
-    )
+        f"{ai_content}\n\n"
 
-
-    suffix = (
-
-        f"\n\n🔗 **Fuente original:** "
+        f"🔗 **Fuente original:** "
         f"{final_source_url}\n\n"
 
         f"⚠️ **REVISIÓN REQUERIDA**\n"
 
-        f"Este contenido fue preparado por Cal Bot "
-        f"como borrador editorial. "
-        f"Revisa la información antes de publicarlo "
-        f"en #noticias.\n\n"
+        f"Este contenido fue preparado por "
+        f"Cal Bot como borrador editorial. "
+        f"Revisa la información antes de "
+        f"publicarlo en #noticias.\n\n"
 
-        f"-# Cal Bot V16 · {date_text}"
+        f"-# Cal Bot V17 · {date_text}"
 
-    )
-
-
-    available = (
-        DISCORD_LIMIT
-        - len(prefix)
-        - len(suffix)
-    )
-
-
-    if available < 300:
-
-        print(
-            "Descartada: no es posible ajustar "
-            "el mensaje al límite de Discord."
-        )
-
-        raise SystemExit(0)
-
-
-    ai_content = (
-        ai_content[:available]
-        .rsplit(
-            " ",
-            1
-        )[0]
-        .rstrip()
-    )
-
-
-    final_message = (
-        prefix
-        + ai_content
-        + suffix
     )
 
 
 # ============================================================
-# SEGURIDAD FINAL
-# ============================================================
-
-if len(final_message) > DISCORD_LIMIT:
-
-    print(
-        "ERROR: mensaje sigue superando "
-        "el límite de Discord."
-    )
-
-    raise SystemExit(1)
-
-
-# ============================================================
-# ENVIAR DISCORD
+# DISCORD
 # ============================================================
 
 print("=" * 64)
-
-print(
-    "NOTICIA APROBADA."
-)
-
-print(
-    "ENVIANDO A DISCORD..."
-)
-
+print("NOTICIA APROBADA.")
+print("ENVIANDO A DISCORD...")
 print("=" * 64)
 
 
@@ -2003,17 +2057,16 @@ try:
     )
 
 
-except requests.RequestException as error:
+except Exception as error:
 
     print("=" * 64)
 
     print(
-        "ERROR DE CONEXIÓN CON DISCORD"
+        "ERROR DE CONEXIÓN "
+        "CON DISCORD"
     )
 
-    print(
-        error
-    )
+    print(error)
 
     print(
         "La noticia NO se guardará."
@@ -2024,15 +2077,15 @@ except requests.RequestException as error:
     raise SystemExit(1)
 
 
-# ============================================================
-# RESULTADO DISCORD
-# ============================================================
-
 print(
     "Discord HTTP:",
     discord_response.status_code
 )
 
+
+# ============================================================
+# ERROR DISCORD
+# ============================================================
 
 if not discord_response.ok:
 
@@ -2043,7 +2096,7 @@ if not discord_response.ok:
     )
 
     print(
-        discord_response.text[:2000]
+        discord_response.text
     )
 
     print(
@@ -2060,11 +2113,9 @@ if not discord_response.ok:
 # ============================================================
 
 print("=" * 64)
-
 print(
     "DISCORD CONFIRMÓ EL MENSAJE."
 )
-
 print("=" * 64)
 
 
@@ -2075,7 +2126,9 @@ print("=" * 64)
 history[
     "published"
 ].append(
-    selected["news_id"]
+    selected[
+        "news_id"
+    ]
 )
 
 
@@ -2089,33 +2142,79 @@ history[
 history[
     "content_hashes"
 ].append(
-    selected["content_hash"]
+    selected[
+        "content_hash"
+    ]
 )
 
 
-# ------------------------------------------------------------
+history[
+    "topics"
+].append({
+
+    "title":
+        ai_title,
+
+    "source":
+        final_source_url,
+
+    "date":
+        date_text,
+
+    "reason":
+        selected[
+            "reason"
+        ]
+
+})
+
+
+# ============================================================
 # LIMITAR HISTORIAL
-# ------------------------------------------------------------
+# ============================================================
 
 history[
     "published"
-] = history[
-    "published"
-][-MAX_HISTORY:]
+] = (
+
+    history[
+        "published"
+    ][-MAX_HISTORY:]
+
+)
 
 
 history[
     "titles"
-] = history[
-    "titles"
-][-MAX_HISTORY:]
+] = (
+
+    history[
+        "titles"
+    ][-MAX_HISTORY:]
+
+)
 
 
 history[
     "content_hashes"
-] = history[
-    "content_hashes"
-][-MAX_HISTORY:]
+] = (
+
+    history[
+        "content_hashes"
+    ][-MAX_HISTORY:]
+
+)
+
+
+history[
+    "topics"
+] = (
+
+    history[
+        "topics"
+    ][-MAX_HISTORY:]
+
+)
 
 
 # ============================================================
@@ -2149,20 +2248,16 @@ try:
 
 except Exception as error:
 
-    print("=" * 64)
-
     print(
-        "ADVERTENCIA: Discord recibió la noticia,"
-        " pero no se pudo guardar el historial."
+        "ERROR guardando historial:"
     )
 
+    print(error)
+
     print(
-        error
+        "La noticia sí fue enviada "
+        "a Discord."
     )
-
-    print("=" * 64)
-
-    raise SystemExit(1)
 
 
 # ============================================================
@@ -2170,13 +2265,11 @@ except Exception as error:
 # ============================================================
 
 print("=" * 64)
-
 print(
-    "NOTICIA PUBLICADA Y GUARDADA EN HISTORIAL."
+    "NOTICIA PUBLICADA "
+    "Y GUARDADA EN HISTORIAL."
 )
-
 print(
-    "CAL BOT V16 FINALIZADO."
+    "CAL BOT V17 FINALIZADO."
 )
-
 print("=" * 64)
