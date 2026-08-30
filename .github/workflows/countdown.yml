@@ -36,11 +36,9 @@ jobs:
 
           W, H = 1280, 720
 
-          # Fondo
           img = Image.new("RGB", (W, H), (28, 7, 35))
           draw = ImageDraw.Draw(img)
 
-          # Degradado rosa/morado
           for y in range(H):
               t = y / H
               r = int(35 + 95 * t)
@@ -48,7 +46,6 @@ jobs:
               b = int(48 + 45 * t)
               draw.line((0, y, W, y), fill=(r, g, b))
 
-          # Luces decorativas
           for x, y, radius in [
               (120, 100, 150),
               (1160, 120, 170),
@@ -69,7 +66,6 @@ jobs:
           timer_font = ImageFont.truetype(font_path, 38)
           small = ImageFont.truetype(font_path, 25)
 
-          # Título
           draw.text(
               (W//2, 55),
               "GRAND THEFT AUTO VI",
@@ -78,7 +74,6 @@ jobs:
               anchor="ma"
           )
 
-          # CAL FAMILY
           draw.text(
               (W//2, 125),
               "CAL FAMILY",
@@ -87,7 +82,6 @@ jobs:
               anchor="ma"
           )
 
-          # Tarjeta central
           card = (170, 175, 1110, 570)
 
           draw.rounded_rectangle(
@@ -98,7 +92,6 @@ jobs:
               width=9
           )
 
-          # LEONIDA
           draw.text(
               (W//2, 220),
               "LEONIDA",
@@ -107,7 +100,6 @@ jobs:
               anchor="ma"
           )
 
-          # Número
           draw.text(
               (W//2, 355),
               str(days),
@@ -116,7 +108,6 @@ jobs:
               anchor="mm"
           )
 
-          # DAYS
           draw.text(
               (W//2, 455),
               "DÍAS",
@@ -125,7 +116,6 @@ jobs:
               anchor="mm"
           )
 
-          # Tiempo
           timer = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
           draw.text(
@@ -136,7 +126,6 @@ jobs:
               anchor="mm"
           )
 
-          # Fecha
           draw.text(
               (W//2, 660),
               "19 DE NOVIEMBRE DE 2026",
@@ -148,12 +137,18 @@ jobs:
           img.save("gta6-countdown.png")
 
           print(f"{days} days remaining")
+
+          # Guardar los días para el siguiente paso
+          with open("days.txt", "w") as f:
+              f.write(str(days))
           PY
 
       - name: Send image to Discord
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
+          DAYS=$(cat days.txt)
+
           curl -X POST "$DISCORD_WEBHOOK" \
             -F "file1=@gta6-countdown.png" \
-            -F 'payload_json={"content":"🌴 **GRAND THEFT AUTO VI**\n\n⏳ **Faltan días para GTA VI — CAL FAMILY**"}'
+            -F "payload_json={\"content\":\"🌴 **GRAND THEFT AUTO VI**\\n\\n⏳ **Faltan ${DAYS} días para GTA VI — CAL FAMILY**\"}"
