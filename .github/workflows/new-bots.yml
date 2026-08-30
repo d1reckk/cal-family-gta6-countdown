@@ -24,33 +24,31 @@ jobs:
           echo "=== REPOSITORY ==="
           pwd
 
-          echo "=== FILES ==="
-          find . -maxdepth 5 -type f | sort
+          echo "=== PROJECT FILES ==="
+          find . -maxdepth 3 -type f \
+            ! -path './.git/*' | sort
 
-          echo "=== SEARCHING requirements.txt ==="
-          REQUIREMENTS_FILE="$(find . -type f -name 'requirements.txt' -print -quit)"
+          REQUIREMENTS_FILE="$(find . -type f \( \
+            -name 'requirements.txt' -o \
+            -name 'requeriments.txt' \
+          \) -print -quit)"
 
           if [ -z "$REQUIREMENTS_FILE" ]; then
-            echo "ERROR: requirements.txt no encontrado."
+            echo "ERROR: No se encontró requirements.txt ni requeriments.txt"
             exit 1
           fi
 
-          echo "requirements.txt encontrado en:"
-          echo "$REQUIREMENTS_FILE"
-
-          echo "REQUIREMENTS_FILE=$REQUIREMENTS_FILE" >> "$GITHUB_ENV"
-
-          echo "=== SEARCHING cal_bot.py ==="
           BOT_FILE="$(find . -type f -name 'cal_bot.py' -print -quit)"
 
           if [ -z "$BOT_FILE" ]; then
-            echo "ERROR: cal_bot.py no encontrado."
+            echo "ERROR: cal_bot.py no encontrado"
             exit 1
           fi
 
-          echo "cal_bot.py encontrado en:"
-          echo "$BOT_FILE"
+          echo "Requirements: $REQUIREMENTS_FILE"
+          echo "Bot: $BOT_FILE"
 
+          echo "REQUIREMENTS_FILE=$REQUIREMENTS_FILE" >> "$GITHUB_ENV"
           echo "BOT_FILE=$BOT_FILE" >> "$GITHUB_ENV"
 
       - name: Install dependencies
@@ -66,9 +64,6 @@ jobs:
         run: |
           set -e
 
-          echo "Verificando sintaxis de:"
-          echo "$BOT_FILE"
-
           python -m py_compile "$BOT_FILE"
 
           echo "PYTHON SYNTAX OK"
@@ -81,8 +76,5 @@ jobs:
         shell: bash
         run: |
           set -e
-
-          echo "Ejecutando:"
-          echo "$BOT_FILE"
 
           python "$BOT_FILE"
