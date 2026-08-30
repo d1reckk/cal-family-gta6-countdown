@@ -5,7 +5,6 @@ on:
     - cron: "*/30 * * * *"
   workflow_dispatch:
 
-# Evita que dos ejecuciones trabajen simultáneamente
 concurrency:
   group: gta-vi-news
   cancel-in-progress: false
@@ -14,31 +13,17 @@ permissions:
   contents: write
 
 jobs:
-
   news:
-
     runs-on: ubuntu-latest
 
     steps:
 
-      # ============================================================
-      # CHECKOUT
-      # ============================================================
-
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ============================================================
-      # DEPENDENCIAS
-      # ============================================================
+        uses: actions/checkout@v5
 
       - name: Install dependencies
         run: |
           pip install feedparser requests beautifulsoup4
-
-      # ============================================================
-      # BUSCAR Y PROCESAR NOTICIAS
-      # ============================================================
 
       - name: Find and analyze GTA VI news
         env:
@@ -97,24 +82,15 @@ jobs:
 
 
           # ============================================================
-          # VALIDAR SECRETS
+          # VALIDAR SECRETOS
           # ============================================================
 
           if not WEBHOOK:
-
-              print(
-                  "ERROR: falta NEWS_DRAFT_WEBHOOK."
-              )
-
+              print("ERROR: falta NEWS_DRAFT_WEBHOOK.")
               exit(1)
 
-
           if not GEMINI_KEY:
-
-              print(
-                  "ERROR: falta GEMINI_API_KEY."
-              )
-
+              print("ERROR: falta GEMINI_API_KEY.")
               exit(1)
 
 
@@ -126,7 +102,6 @@ jobs:
 
               url = url.strip()
 
-              # Elimina parámetros de tracking comunes
               url = re.sub(
                   r"[?&](utm_[^&]+|oc=\d+)",
                   "",
@@ -140,7 +115,7 @@ jobs:
 
 
           # ============================================================
-          # CREAR ID ESTABLE
+          # CREAR ID DE LA NOTICIA
           # ============================================================
 
           def make_id(url):
@@ -153,7 +128,7 @@ jobs:
 
 
           # ============================================================
-          # HISTORIAL
+          # CARGAR HISTORIAL
           # ============================================================
 
           if os.path.exists(HISTORY_FILE):
@@ -212,10 +187,6 @@ jobs:
           history = normalized_history
 
 
-          # ============================================================
-          # IDs YA PROCESADOS
-          # ============================================================
-
           seen_ids = {
 
               item.get("id")
@@ -232,11 +203,8 @@ jobs:
           # ============================================================
 
           print("========================================")
-
           print("CAL BOT")
-
           print("BUSCANDO NOTICIAS NUEVAS...")
-
           print("========================================")
 
 
@@ -255,7 +223,7 @@ jobs:
 
 
           # ============================================================
-          # SELECCIONAR PRIMER ARTÍCULO REALMENTE NUEVO
+          # SELECCIONAR NOTICIA NUEVA
           # ============================================================
 
           article = None
@@ -288,10 +256,7 @@ jobs:
               )
 
 
-              # --------------------------------------------------------
-              # MISMA URL = REPETIDA
-              # --------------------------------------------------------
-
+              # MISMO ARTÍCULO
               if news_id in seen_ids:
 
                   print(
@@ -301,10 +266,7 @@ jobs:
                   continue
 
 
-              # --------------------------------------------------------
-              # COMPROBAR URL EXACTA EN HISTORIAL
-              # --------------------------------------------------------
-
+              # URL EXACTA
               duplicate_url = False
 
 
@@ -334,10 +296,6 @@ jobs:
                   continue
 
 
-              # --------------------------------------------------------
-              # NOTICIA NUEVA
-              # --------------------------------------------------------
-
               article = {
 
                   "id": news_id,
@@ -350,7 +308,6 @@ jobs:
 
               }
 
-
               break
 
 
@@ -360,43 +317,28 @@ jobs:
 
           if article is None:
 
-              print(
-                  "========================================"
-              )
-
-              print(
-                  "NO HAY NOTICIAS NUEVAS."
-              )
-
-              print(
-                  "========================================"
-              )
+              print("========================================")
+              print("NO HAY NOTICIAS NUEVAS.")
+              print("========================================")
 
               exit(0)
 
 
           title = article["title"]
-
           link = article["link"]
-
           clean_link = article["clean_link"]
-
           news_id = article["id"]
 
 
           print("========================================")
-
           print("NUEVA NOTICIA")
-
           print(title)
-
           print(link)
-
           print("========================================")
 
 
           # ============================================================
-          # DESCARGAR ARTÍCULO
+          # OBTENER ARTÍCULO
           # ============================================================
 
           article_text = ""
@@ -497,7 +439,7 @@ jobs:
 
 
           # ============================================================
-          # CONTENIDO PARA GEMINI
+          # CONTENIDO
           # ============================================================
 
           if article_text:
@@ -517,7 +459,7 @@ jobs:
 
 
           # ============================================================
-          # PROMPT
+          # PROMPT GEMINI
           # ============================================================
 
           prompt = f"""
@@ -525,9 +467,8 @@ jobs:
           Eres el editor de noticias de CAL FAMILY,
           una comunidad dedicada a Grand Theft Auto VI.
 
-          Debes preparar un borrador profesional
-          para Discord basándote exclusivamente
-          en la información proporcionada.
+          Convierte la información proporcionada
+          en un borrador profesional para Discord.
 
           REGLA ABSOLUTA:
 
@@ -554,7 +495,7 @@ jobs:
           CLASIFICACIÓN
           ============================================================
 
-          Si el artículo presenta información factual:
+          Si presenta información factual:
 
           🧭 **Noticias**
 
@@ -591,14 +532,13 @@ jobs:
 
           **Por qué importa**
 
-          [Por qué la información es relevante
-          para la comunidad de GTA VI.]
+          [Por qué es relevante para GTA VI.]
 
           Si corresponde:
 
           ⚠️ **Esto no es un anuncio oficial ni una filtración.**
 
-          [Explicación clara.]
+          [Explicación.]
 
           ============================================================
           ESTILO
@@ -611,7 +551,7 @@ jobs:
           - No exageres.
           - No inventes.
           - No repitas innecesariamente.
-          - No utilices demasiados emojis.
+          - No uses demasiados emojis.
           - No pongas enlaces.
           - No menciones que eres una IA.
           - No escribas explicaciones fuera del artículo.
@@ -620,7 +560,7 @@ jobs:
           en Discord.
 
           ============================================================
-          INFORMACIÓN DE LA NOTICIA
+          INFORMACIÓN
           ============================================================
 
           TÍTULO:
@@ -636,6 +576,7 @@ jobs:
           {source_content}
 
           Genera únicamente el borrador final.
+
           """
 
 
@@ -648,7 +589,7 @@ jobs:
           )
 
 
-          payload = {
+          gemini_payload = {
 
               "contents": [
 
@@ -696,7 +637,7 @@ jobs:
 
               },
 
-              json=payload,
+              json=gemini_payload,
 
               timeout=90
 
@@ -705,25 +646,11 @@ jobs:
 
           if not response.ok:
 
-              print(
-                  "========================================"
-              )
-
-              print(
-                  "ERROR DE GEMINI"
-              )
-
-              print(
-                  response.status_code
-              )
-
-              print(
-                  response.text
-              )
-
-              print(
-                  "========================================"
-              )
+              print("========================================")
+              print("ERROR DE GEMINI")
+              print(response.status_code)
+              print(response.text)
+              print("========================================")
 
               exit(1)
 
@@ -750,8 +677,7 @@ jobs:
           except Exception:
 
               print(
-                  "ERROR: Gemini devolvió "
-                  "una respuesta inesperada."
+                  "ERROR: respuesta inesperada de Gemini."
               )
 
               print(
@@ -784,7 +710,7 @@ jobs:
 
 
           # ============================================================
-          # MENSAJE FINAL
+          # MENSAJE DISCORD
           # ============================================================
 
           final_message = (
@@ -813,7 +739,7 @@ jobs:
 
 
           # ============================================================
-          # ENVIAR A DISCORD
+          # DISCORD
           # ============================================================
 
           print(
@@ -853,32 +779,17 @@ jobs:
 
           if not discord_response.ok:
 
-              print(
-                  "========================================"
-              )
-
-              print(
-                  "ERROR DE DISCORD"
-              )
-
-              print(
-                  discord_response.status_code
-              )
-
-              print(
-                  discord_response.text
-              )
-
-              print(
-                  "========================================"
-              )
+              print("========================================")
+              print("ERROR DE DISCORD")
+              print(discord_response.status_code)
+              print(discord_response.text)
+              print("========================================")
 
               exit(1)
 
 
           # ============================================================
-          # GUARDAR EN HISTORIAL
-          # SOLO DESPUÉS DE ENVIAR CORRECTAMENTE
+          # GUARDAR HISTORIAL
           # ============================================================
 
           history.append({
@@ -925,21 +836,11 @@ jobs:
               )
 
 
-          print(
-              "Historial actualizado."
-          )
-
+          print("Historial actualizado.")
 
           print("========================================")
-
-          print(
-              "NOTICIA ENVIADA A DISCORD"
-          )
-
-          print(
-              "PUBLICADA UNA SOLA VEZ"
-          )
-
+          print("NOTICIA ENVIADA A DISCORD")
+          print("PUBLICADA UNA SOLA VEZ")
           print("========================================")
 
 
@@ -947,7 +848,7 @@ jobs:
 
 
       # ============================================================
-      # GUARDAR HISTORIAL EN GITHUB
+      # GUARDAR HISTORIAL
       # ============================================================
 
       - name: Save news history
