@@ -41,7 +41,7 @@ jobs:
           WEBHOOK = os.environ["NEWS_DRAFT_WEBHOOK"]
           GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 
-          MODEL = "gemini-2.5-flash-lite"
+          MODEL = "gemini-3.5-flash-lite"
 
           GEMINI_URL = (
               f"https://generativelanguage.googleapis.com/v1beta/"
@@ -63,9 +63,16 @@ jobs:
           # ============================================================
 
           if os.path.exists(HISTORY_FILE):
-              with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+
+              with open(
+                  HISTORY_FILE,
+                  "r",
+                  encoding="utf-8"
+              ) as f:
                   seen = json.load(f)
+
           else:
+
               seen = []
 
           # ============================================================
@@ -77,6 +84,7 @@ jobs:
           feed = feedparser.parse(RSS_URL)
 
           if not feed.entries:
+
               print("No se encontraron noticias.")
               exit(0)
 
@@ -84,8 +92,15 @@ jobs:
 
           for entry in feed.entries:
 
-              title = entry.get("title", "").strip()
-              link = entry.get("link", "").strip()
+              title = entry.get(
+                  "title",
+                  ""
+              ).strip()
+
+              link = entry.get(
+                  "link",
+                  ""
+              ).strip()
 
               if not title or not link:
                   continue
@@ -105,6 +120,7 @@ jobs:
                   break
 
           if article is None:
+
               print("No hay noticias nuevas.")
               exit(0)
 
@@ -119,7 +135,7 @@ jobs:
           print("========================================")
 
           # ============================================================
-          # OBTENER CONTENIDO DEL ARTÍCULO
+          # OBTENER ARTÍCULO
           # ============================================================
 
           article_text = ""
@@ -154,20 +170,27 @@ jobs:
                   )
 
                   for element in soup(
-                      ["script", "style", "noscript", "svg"]
+                      [
+                          "script",
+                          "style",
+                          "noscript",
+                          "svg"
+                      ]
                   ):
+
                       element.decompose()
 
                   paragraphs = []
 
-                  for p in soup.find_all("p"):
+                  for paragraph in soup.find_all("p"):
 
-                      text = p.get_text(
+                      text = paragraph.get_text(
                           " ",
                           strip=True
                       )
 
                       if len(text) >= 50:
+
                           paragraphs.append(text)
 
                   article_text = "\n".join(
@@ -198,7 +221,7 @@ jobs:
               )
 
           # ============================================================
-          # PROMPT PARA GEMINI
+          # PROMPT
           # ============================================================
 
           prompt = f"""
@@ -210,7 +233,8 @@ jobs:
 
           IMPORTANTE:
 
-          Utiliza únicamente la información proporcionada.
+          Utiliza únicamente la información proporcionada
+          en el título y contenido disponible.
 
           Nunca inventes:
 
@@ -227,7 +251,7 @@ jobs:
           debes indicarlo claramente.
 
           ============================================================
-          INFORMACIÓN DE LA NOTICIA
+          INFORMACIÓN
           ============================================================
 
           TÍTULO:
@@ -243,11 +267,11 @@ jobs:
           FORMATO
           ============================================================
 
-          Comienza exactamente con una de estas dos opciones:
+          Comienza exactamente con:
 
           🧭 **Noticias**
 
-          o
+          o:
 
           🧭 **Análisis**
 
@@ -303,10 +327,10 @@ jobs:
           """
 
           # ============================================================
-          # GEMINI API
+          # GEMINI 3.5 FLASH-LITE
           # ============================================================
 
-          print("Enviando noticia a Gemini...")
+          print("Enviando noticia a Gemini 3.5 Flash-Lite...")
 
           payload = {
               "contents": [
@@ -349,7 +373,7 @@ jobs:
           data = response.json()
 
           # ============================================================
-          # EXTRAER RESPUESTA
+          # EXTRAER RESPUESTA DE GEMINI
           # ============================================================
 
           try:
@@ -418,7 +442,7 @@ jobs:
           )
 
           # ============================================================
-          # ENVIAR A DISCORD
+          # DISCORD
           # ============================================================
 
           discord_payload = {
@@ -448,7 +472,15 @@ jobs:
               exit(1)
 
           print(
-              "Borrador enviado correctamente a Discord."
+              "========================================"
+          )
+
+          print(
+              "BORRADOR ENVIADO A DISCORD"
+          )
+
+          print(
+              "========================================"
           )
 
           # ============================================================
