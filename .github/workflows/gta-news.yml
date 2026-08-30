@@ -5,16 +5,22 @@ on:
     - cron: "*/30 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   news:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install dependencies
         run: |
           pip install feedparser requests
 
-      - name: Check GTA VI news
+      - name: Check for new GTA VI news
         env:
           NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
         run: |
@@ -37,11 +43,25 @@ jobs:
 
           HISTORY_FILE = "seen_news.json"
 
+          # ============================================================
+          # CARGAR HISTORIAL
+          # ============================================================
+
           if os.path.exists(HISTORY_FILE):
-              with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+
+              with open(
+                  HISTORY_FILE,
+                  "r",
+                  encoding="utf-8"
+              ) as f:
                   seen = json.load(f)
+
           else:
               seen = []
+
+          # ============================================================
+          # OBTENER NOTICIAS
+          # ============================================================
 
           feed = feedparser.parse(RSS_URL)
 
@@ -49,10 +69,23 @@ jobs:
               print("No se encontraron noticias.")
               exit(0)
 
-          for entry in feed.entries[:10]:
+          # ============================================================
+          # BUSCAR SOLO LA PRIMERA NOTICIA NUEVA
+          # ============================================================
 
-              title = entry.get("title", "").strip()
-              link = entry.get("link", "").strip()
+          new_article = None
+
+          for entry in feed.entries:
+
+              title = entry.get(
+                  "title",
+                  ""
+              ).strip()
+
+              link = entry.get(
+                  "link",
+                  ""
+              ).strip()
 
               if not title or not link:
                   continue
@@ -61,57 +94,120 @@ jobs:
                   link.encode("utf-8")
               ).hexdigest()
 
-              if news_id in seen:
-                  continue
+              if news_id not in seen:
 
-              content = (
-                  "<@&1504921814759903343>\n\n"
-                  "🧭 **Noticias**\n\n"
-                  f"# {title}\n\n"
-                  "**Resumen**\n"
-                  "Nueva información relacionada con "
-                  "Grand Theft Auto VI.\n\n"
-                  "**Fuente original**\n"
-                  f"{link}\n\n"
-                  "⚠️ **REVISIÓN REQUERIDA**\n"
-                  "Este mensaje es un borrador. "
-                  "Revisa la información antes de publicarla "
-                  "en #noticias."
-              )
-
-              payload = {
-                  "content": content,
-                  "username": "Cal Bot",
-                  "allowed_mentions": {
-                      "roles": [
-                          "1504921814759903343"
-                      ]
+                  new_article = {
+                      "id": news_id,
+                      "title": title,
+                      "link": link
                   }
-              }
 
-              response = requests.post(
-                  WEBHOOK,
-                  json=payload,
-                  timeout=30
+                  break
+
+          # ============================================================
+          # SI NO HAY NADA NUEVO
+          # ============================================================
+
+          if new_article is None:
+
+              print(
+                  "No hay noticias nuevas."
               )
 
-              response.raise_for_status()
+              exit(0)
 
-              print("Borrador enviado:")
-              print(title)
+          # ============================================================
+          # DATOS
+          # ============================================================
 
-              seen.append(news_id)
+          title = new_article["title"]
+          link = new_article["link"]
+          news_id = new_article["id"]
+
+          # ============================================================
+          # CREAR BORRADOR
+          # ============================================================
+
+          content = (
+              "<@&1504921814759903343>\n\n"
+              "🧭 **Noticias**\n\n"
+              f"# {title}\n\n"
+              "**Resumen**\n"
+              "Nueva información relacionada con "
+              "Grand Theft Auto VI.\n\n"
+              "**Fuente original**\n"
+              f"{link}\n\n"
+              "⚠️ **REVISIÓN REQUERIDA**\n"
+              "Este mensaje es un borrador. "
+              "Revisa la información antes de publicarla "
+              "en #noticias."
+          )
+
+          payload = {
+              "content": content,
+              "username": "Cal Bot",
+              "allowed_mentions": {
+                  "roles": [
+                      "1504921814759903343"
+                  ]
+              }
+          }
+
+          # ============================================================
+          # ENVIAR A DISCORD
+          # ============================================================
+
+          response = requests.post(
+              WEBHOOK,
+              json=payload,
+              timeout=30
+          )
+
+          response.raise_for_status()
+
+          print(
+              "Borrador enviado correctamente:"
+          )
+
+          print(title)
+
+          # ============================================================
+          # GUARDAR COMO VISTA
+          # ============================================================
+
+          seen.append(news_id)
+
+          # Mantener solamente los últimos 500
+          seen = seen[-500:]
 
           with open(
               HISTORY_FILE,
               "w",
               encoding="utf-8"
           ) as f:
+
               json.dump(
-                  seen[-500:],
+                  seen,
                   f,
                   indent=2
               )
 
-          print("Proceso terminado.")
+          print(
+              "Historial actualizado."
+          )
+
           PY
+
+      - name: Save news history
+        run: |
+          git config user.name "Cal Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add seen_news.json
+
+          if git diff --cached --quiet; then
+            echo "No hay cambios en el historial."
+          else
+            git commit -m "Update GTA VI news history"
+            git push
+          fi
