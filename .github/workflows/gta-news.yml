@@ -23,7 +23,7 @@ jobs:
       - name: Find and analyze GTA VI news
         env:
           NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python - <<'PY'
           import feedparser
@@ -34,8 +34,19 @@ jobs:
           from bs4 import BeautifulSoup
           from datetime import datetime, timezone
 
+          # ============================================================
+          # CONFIGURACIÓN
+          # ============================================================
+
           WEBHOOK = os.environ["NEWS_DRAFT_WEBHOOK"]
-          OPENAI_KEY = os.environ["OPENAI_API_KEY"]
+          GEMINI_KEY = os.environ["GEMINI_API_KEY"]
+
+          MODEL = "gemini-2.5-flash-lite"
+
+          GEMINI_URL = (
+              f"https://generativelanguage.googleapis.com/v1beta/"
+              f"models/{MODEL}:generateContent"
+          )
 
           RSS_URL = (
               "https://news.google.com/rss/"
@@ -58,8 +69,10 @@ jobs:
               seen = []
 
           # ============================================================
-          # RSS
+          # BUSCAR NOTICIAS
           # ============================================================
+
+          print("Buscando noticias nuevas de GTA VI...")
 
           feed = feedparser.parse(RSS_URL)
 
@@ -106,7 +119,7 @@ jobs:
           print("========================================")
 
           # ============================================================
-          # INTENTAR OBTENER EL ARTÍCULO
+          # OBTENER CONTENIDO DEL ARTÍCULO
           # ============================================================
 
           article_text = ""
@@ -125,7 +138,12 @@ jobs:
               page = requests.get(
                   link,
                   headers=headers,
-                  timeout=20
+                  timeout=20,
+                  allow_redirects=True
+              )
+
+              print(
+                  f"Estado de la página: {page.status_code}"
               )
 
               if page.ok:
@@ -136,7 +154,7 @@ jobs:
                   )
 
                   for element in soup(
-                      ["script", "style", "noscript"]
+                      ["script", "style", "noscript", "svg"]
                   ):
                       element.decompose()
 
@@ -149,7 +167,7 @@ jobs:
                           strip=True
                       )
 
-                      if len(text) > 40:
+                      if len(text) >= 50:
                           paragraphs.append(text)
 
                   article_text = "\n".join(
@@ -167,10 +185,6 @@ jobs:
 
               print(error)
 
-          # ============================================================
-          # CONTENIDO PARA LA IA
-          # ============================================================
-
           if article_text:
 
               source_content = article_text
@@ -184,7 +198,7 @@ jobs:
               )
 
           # ============================================================
-          # PROMPT
+          # PROMPT PARA GEMINI
           # ============================================================
 
           prompt = f"""
@@ -196,23 +210,24 @@ jobs:
 
           IMPORTANTE:
 
-          Solo puedes afirmar información que aparezca
-          en el material proporcionado.
+          Utiliza únicamente la información proporcionada.
 
           Nunca inventes:
-          - declaraciones
+
+          - declaraciones de Rockstar Games
           - fechas
           - cifras
           - características
-          - fuentes
+          - nombres
           - rumores
-          - información de Rockstar Games
+          - fuentes
+          - información que no aparezca en el material
 
           Si algo es opinión, análisis, rumor o especulación,
-          debes decirlo claramente.
+          debes indicarlo claramente.
 
           ============================================================
-          INFORMACIÓN
+          INFORMACIÓN DE LA NOTICIA
           ============================================================
 
           TÍTULO:
@@ -221,46 +236,50 @@ jobs:
           ENLACE:
           {link}
 
-          CONTENIDO DISPONIBLE:
+          CONTENIDO:
           {source_content}
 
           ============================================================
           FORMATO
           ============================================================
 
-          Comienza exactamente con:
+          Comienza exactamente con una de estas dos opciones:
 
           🧭 **Noticias**
 
-          o:
+          o
 
           🧭 **Análisis**
 
-          dependiendo de la naturaleza de la noticia.
+          Utiliza "Análisis" cuando el artículo sea principalmente
+          opinión, interpretación o análisis.
 
-          Después:
+          Utiliza "Noticias" cuando presente información factual.
+
+          Después escribe:
 
           # [Título atractivo en español]
 
-          [Introducción de 1-2 párrafos.]
+          [Introducción clara de 1-2 párrafos.]
 
           **El dato que lo pone en perspectiva**
 
-          [Contexto importante.]
+          [Contexto relevante.]
 
           **La señal que más dice**
 
-          [Explicación del detalle más interesante.]
+          [El detalle más interesante.]
 
           **Por qué importa**
 
-          [Explicación de por qué la información es relevante
-          para GTA VI.]
+          [Explica por qué la información es relevante para GTA VI.]
 
-          Si corresponde, añade una advertencia:
+          Si corresponde, añade:
 
           ⚠️ **Esto no es un anuncio oficial ni una filtración.**
-          [Explica qué parte es análisis, opinión o especulación.]
+
+          [Explica brevemente qué parte es análisis,
+          opinión, rumor o especulación.]
 
           ============================================================
           ESTILO
@@ -269,60 +288,85 @@ jobs:
           - Español natural.
           - Profesional.
           - Claro.
-          - Interesante.
+          - Atractivo.
           - Estilo de una página especializada en GTA VI.
           - No exageres.
-          - No inventes.
+          - No inventes información.
           - No uses demasiados emojis.
-          - No pongas enlaces dentro del texto.
-          - No escribas comentarios sobre que eres una IA.
-          - No escribas una introducción fuera del formato.
-          - El resultado debe estar listo para pegar en Discord.
+          - Usa negritas para datos importantes.
+          - No pongas enlaces dentro del artículo.
+          - No menciones que eres una IA.
+          - No escribas explicaciones fuera del formato.
+          - El resultado debe estar listo para Discord.
 
           Genera únicamente el texto final del borrador.
           """
 
           # ============================================================
-          # OPENAI RESPONSES API
+          # GEMINI API
           # ============================================================
 
+          print("Enviando noticia a Gemini...")
+
+          payload = {
+              "contents": [
+                  {
+                      "parts": [
+                          {
+                              "text": prompt
+                          }
+                      ]
+                  }
+              ],
+              "generationConfig": {
+                  "temperature": 0.4,
+                  "maxOutputTokens": 1400
+              }
+          }
+
           response = requests.post(
-              "https://api.openai.com/v1/responses",
+              GEMINI_URL,
+              params={
+                  "key": GEMINI_KEY
+              },
               headers={
-                  "Authorization": f"Bearer {OPENAI_KEY}",
                   "Content-Type": "application/json"
               },
-              json={
-                  "model": "gpt-5.6-luna",
-                  "input": prompt,
-                  "max_output_tokens": 1600
-              },
+              json=payload,
               timeout=90
           )
 
           if not response.ok:
 
-              print("ERROR DE OPENAI")
-              print(response.status_code)
+              print("========================================")
+              print("ERROR DE GEMINI")
+              print(f"HTTP {response.status_code}")
               print(response.text)
+              print("========================================")
 
               exit(1)
 
           data = response.json()
 
           # ============================================================
-          # EXTRAER TEXTO
+          # EXTRAER RESPUESTA
           # ============================================================
 
-          ai_text = data.get(
-              "output_text",
-              ""
-          ).strip()
+          try:
 
-          if not ai_text:
+              ai_text = (
+                  data["candidates"][0]
+                  ["content"]
+                  ["parts"][0]
+                  ["text"]
+                  .strip()
+              )
+
+          except Exception:
 
               print(
-                  "OpenAI no devolvió texto."
+                  "Gemini respondió, pero no se pudo "
+                  "extraer el texto."
               )
 
               print(
@@ -335,6 +379,20 @@ jobs:
 
               exit(1)
 
+          if not ai_text:
+
+              print(
+                  "Gemini devolvió una respuesta vacía."
+              )
+
+              exit(1)
+
+          print("========================================")
+          print("BORRADOR GENERADO")
+          print("========================================")
+          print(ai_text)
+          print("========================================")
+
           # ============================================================
           # FECHA
           # ============================================================
@@ -344,7 +402,7 @@ jobs:
           ).strftime("%d/%m/%Y")
 
           # ============================================================
-          # MENSAJE DISCORD
+          # MENSAJE FINAL
           # ============================================================
 
           final_message = (
@@ -360,10 +418,10 @@ jobs:
           )
 
           # ============================================================
-          # DISCORD
+          # ENVIAR A DISCORD
           # ============================================================
 
-          payload = {
+          discord_payload = {
               "content": final_message,
               "username": "Cal Bot",
               "allowed_mentions": {
@@ -375,36 +433,22 @@ jobs:
 
           discord_response = requests.post(
               WEBHOOK,
-              json=payload,
+              json=discord_payload,
               timeout=30
           )
 
           if not discord_response.ok:
 
-              print(
-                  "ERROR DE DISCORD"
-              )
-
-              print(
-                  discord_response.status_code
-              )
-
-              print(
-                  discord_response.text
-              )
+              print("========================================")
+              print("ERROR DE DISCORD")
+              print(f"HTTP {discord_response.status_code}")
+              print(discord_response.text)
+              print("========================================")
 
               exit(1)
 
           print(
-              "========================================"
-          )
-
-          print(
-              "BORRADOR ENVIADO A DISCORD"
-          )
-
-          print(
-              "========================================"
+              "Borrador enviado correctamente a Discord."
           )
 
           # ============================================================
@@ -427,9 +471,7 @@ jobs:
                   indent=2
               )
 
-          print(
-              "Historial actualizado."
-          )
+          print("Historial actualizado.")
 
           PY
 
