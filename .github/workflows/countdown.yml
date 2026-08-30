@@ -138,29 +138,48 @@ jobs:
               f.write(str(days))
           PY
 
-      - name: Update Discord countdown
+      - name: Create or update Discord message
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           MESSAGE_ID: ${{ secrets.DISCORD_MESSAGE_ID }}
         run: |
           DAYS=$(cat days.txt)
 
+          CONTENT="🌴 **GRAND THEFT AUTO VI**
+
+          ⏳ **Faltan ${DAYS} días para GTA VI — CAL FAMILY**"
+
           if [ "$MESSAGE_ID" = "0" ]; then
 
-            RESPONSE=$(curl -s -X POST "$DISCORD_WEBHOOK" \
+            echo "Creando el mensaje inicial..."
+
+            RESPONSE=$(curl -sS -X POST "${DISCORD_WEBHOOK}?wait=true" \
               -F "file1=@gta6-countdown.png" \
-              -F "payload_json={\"content\":\"🌴 **GRAND THEFT AUTO VI**\\n\\n⏳ **Faltan ${DAYS} días para GTA VI — CAL FAMILY**\"}")
+              --form-string "payload_json={\"content\":\"${CONTENT}\"}")
 
             echo "$RESPONSE"
 
-            NEW_ID=$(echo "$RESPONSE" | python -c "import sys,json; print(json.load(sys.stdin).get('id',''))")
+            NEW_ID=$(echo "$RESPONSE" | python -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
-            echo "Nuevo mensaje: $NEW_ID"
+            echo ""
+            echo "========================================"
+            echo "MENSAJE CREADO"
+            echo "MESSAGE ID: $NEW_ID"
+            echo "========================================"
+            echo ""
+            echo "IMPORTANTE: copia ese ID y ponlo en"
+            echo "DISCORD_MESSAGE_ID en GitHub Secrets."
 
           else
 
-            curl -s -X PATCH "$DISCORD_WEBHOOK/messages/$MESSAGE_ID" \
+            echo "Actualizando mensaje existente: $MESSAGE_ID"
+
+            curl -sS -X PATCH \
+              "${DISCORD_WEBHOOK}/messages/${MESSAGE_ID}" \
               -F "file1=@gta6-countdown.png" \
-              -F "payload_json={\"content\":\"🌴 **GRAND THEFT AUTO VI**\\n\\n⏳ **Faltan ${DAYS} días para GTA VI — CAL FAMILY**\"}"
+              --form-string "payload_json={\"content\":\"${CONTENT}\"}"
+
+            echo ""
+            echo "Contador actualizado correctamente."
 
           fi
