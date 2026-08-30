@@ -1,3 +1,4 @@
+```yaml
 name: GTA VI News Bot
 
 on:
@@ -22,27 +23,43 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check repository files
+        run: |
+          echo "========== CURRENT DIRECTORY =========="
+          pwd
+
+          echo "========== ROOT FILES =========="
+          find . -maxdepth 2 -type f | sort
+
+          echo "========== REQUIREMENTS =========="
+          if [ -f requirements.txt ]; then
+            echo "requirements.txt FOUND"
+            cat requirements.txt
+          else
+            echo "ERROR: requirements.txt NOT FOUND"
+            exit 1
+          fi
+
+          echo "========== BOT =========="
+          if [ -f cal_bot.py ]; then
+            echo "cal_bot.py FOUND"
+          else
+            echo "ERROR: cal_bot.py NOT FOUND"
+            exit 1
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
-          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
 
-      - name: Verify bot file
+      - name: Verify bot syntax
         run: |
-          echo "========== BOT FILE =========="
-          pwd
-          python --version
-          test -f cal_bot.py
-          head -n 20 cal_bot.py
-
-          echo "========== SYNTAX =========="
           python -m py_compile cal_bot.py
 
       - name: Verify secrets
@@ -89,3 +106,4 @@ jobs:
           git add seen_news.json
           git commit -m "Update news history"
           git push
+```
