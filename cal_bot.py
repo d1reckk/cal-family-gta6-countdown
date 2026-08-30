@@ -17,53 +17,15 @@ from bs4 import BeautifulSoup
 
 # CAL BOT V21
 
-# Editor de noticias de CAL FAMILY / GTA VI
-
-#
-
-# V21:
-
-# - Importación de os corregida.
-
-# - Compatible con Python 3.12/3.13.
-
-# - RSS Google News / Bing.
-
-# - Deduplicación robusta.
-
-# - Historial atómico.
-
-# - Filtro conservador de leaks/cyberleaks.
-
-# - Evaluación editorial mediante Gemini.
-
-# - JSON estructurado.
-
-# - Retry para Gemini.
-
-# - Retry para Discord.
-
-# - Solo guarda historial después de confirmar Discord.
-
-# ================================================================
-
-# ================================================================
-
-# CONFIG
-
 # ================================================================
 
 WEBHOOK = os.environ.get("NEWS_DRAFT_WEBHOOK", "").strip()
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
-HISTORY_FILE = os.environ.get(
-"HISTORY_FILE",
-"seen_news.json",
-)
-
+HISTORY_FILE = os.environ.get("HISTORY_FILE", "seen_news.json")
 ROLE_ID = os.environ.get(
 "DISCORD_ROLE_ID",
-"1504921814759903343",
+"1504921814759903343"
 ).strip()
 
 GEMINI_MODELS = [
@@ -82,7 +44,6 @@ DISCORD_TIMEOUT = 20
 
 MAX_ARTICLE_CHARS = 18000
 MAX_RSS_CHARS = 12000
-MAX_DISCORD_CONTENT = 2000
 SAFE_DISCORD_LIMIT = 1900
 
 HEADERS = {
@@ -216,7 +177,7 @@ print("=" * 70)
 print("CAL BOT V21")
 print("PYTHON:", os.sys.executable)
 print("FILE:", os.path.abspath(**file**))
-print("WORKING DIRECTORY:", os.getcwd())
+print("HISTORY:", os.path.abspath(HISTORY_FILE))
 print("=" * 70)
 
 ```
@@ -253,23 +214,14 @@ replacements = {
 for old, new in replacements.items():
     text = text.replace(old, new)
 
-text = re.sub(
-    r"https?://\S+",
-    " ",
-    text,
-)
-
+text = re.sub(r"https?://\S+", " ", text)
 text = re.sub(
     r"[^a-z0-9áéíóúüñ ]+",
     " ",
-    text,
+    text
 )
 
-return re.sub(
-    r"\s+",
-    " ",
-    text,
-).strip()
+return re.sub(r"\s+", " ", text).strip()
 ```
 
 def similarity(a, b):
@@ -289,9 +241,7 @@ return ""
 
 ```
 try:
-    parsed = urlparse(
-        str(url).strip()
-    )
+    parsed = urlparse(str(url).strip())
 
     ignored = {
         "utm_source",
@@ -308,7 +258,7 @@ try:
 
     query = parse_qs(
         parsed.query,
-        keep_blank_values=True,
+        keep_blank_values=True
     )
 
     clean_query = {
@@ -325,7 +275,7 @@ try:
             "",
             urlencode(
                 clean_query,
-                doseq=True,
+                doseq=True
             ),
             "",
         )
@@ -360,10 +310,10 @@ return ""
 ```
 return BeautifulSoup(
     str(text),
-    "html.parser",
+    "html.parser"
 ).get_text(
     " ",
-    strip=True,
+    strip=True
 )
 ```
 
@@ -392,14 +342,14 @@ try:
     with open(
         HISTORY_FILE,
         "r",
-        encoding="utf-8",
+        encoding="utf-8"
     ) as file:
         data = json.load(file)
 
 except Exception as exc:
     print(
         "No se pudo leer el historial:",
-        exc,
+        exc
     )
     return default
 
@@ -411,21 +361,17 @@ if isinstance(data, list):
 if not isinstance(data, dict):
     data = {}
 
-history = {}
+result = {}
 
 for key in default:
-    value = data.get(
-        key,
-        [],
-    )
+    value = data.get(key, [])
 
-    history[key] = (
-        value
-        if isinstance(value, list)
-        else []
-    )
+    if isinstance(value, list):
+        result[key] = value
+    else:
+        result[key] = []
 
-return history
+return result
 ```
 
 def save_history(history):
@@ -439,10 +385,7 @@ for key in (
     "content_hashes",
     "source_urls",
 ):
-    value = history.get(
-        key,
-        [],
-    )
+    value = history.get(key, [])
 
     if not isinstance(value, list):
         value = []
@@ -455,7 +398,7 @@ directory = os.path.dirname(
 
 os.makedirs(
     directory,
-    exist_ok=True,
+    exist_ok=True
 )
 
 temp_file = HISTORY_FILE + ".tmp"
@@ -463,29 +406,29 @@ temp_file = HISTORY_FILE + ".tmp"
 with open(
     temp_file,
     "w",
-    encoding="utf-8",
+    encoding="utf-8"
 ) as file:
     json.dump(
         history,
         file,
         indent=2,
-        ensure_ascii=False,
+        ensure_ascii=False
     )
 
 os.replace(
     temp_file,
-    HISTORY_FILE,
+    HISTORY_FILE
 )
 ```
 
 def published_title_duplicate(
 title,
 history,
-threshold=0.88,
+threshold=0.88
 ):
 titles = history.get(
 "titles",
-[],
+[]
 )
 
 ```
@@ -495,7 +438,7 @@ if not isinstance(titles, list):
 return any(
     similarity(
         title,
-        old_title,
+        old_title
     ) >= threshold
     for old_title in titles
 )
@@ -555,7 +498,7 @@ for pattern in HARD_TITLE_PATTERNS:
     if re.search(
         pattern,
         normalized,
-        flags=re.I,
+        flags=re.I
     ):
         return True
 
@@ -564,7 +507,7 @@ return False
 
 def looks_like_leak_or_cyberleak(
 title,
-content,
+content
 ):
 title_text = normalize_text(title)
 content_text = normalize_text(content)
@@ -574,7 +517,7 @@ if any(
     re.search(
         pattern,
         title_text,
-        flags=re.I,
+        flags=re.I
     )
     for pattern in LEAK_ACQUISITION_PATTERNS
 ):
@@ -605,24 +548,22 @@ hits = sum(
     if re.search(
         pattern,
         content_text,
-        flags=re.I,
+        flags=re.I
     )
-)
-
-acquisition_phrases = (
-    "unauthorized access",
-    "acceso no autorizado",
-    "stolen files",
-    "archivos robados",
-    "stolen source code",
-    "código fuente robado",
-    "stolen database",
-    "base de datos robada",
 )
 
 acquisition = any(
     phrase in content_text
-    for phrase in acquisition_phrases
+    for phrase in (
+        "unauthorized access",
+        "acceso no autorizado",
+        "stolen files",
+        "archivos robados",
+        "stolen source code",
+        "código fuente robado",
+        "stolen database",
+        "base de datos robada",
+    )
 )
 
 return hits >= 2 and acquisition
@@ -651,46 +592,44 @@ print("FEED:", name)
 print("URL:", url)
 
 if not url:
-    print(
-        "FEED DESCARTADO: URL vacía."
-    )
+    print("FEED DESCARTADO: URL vacía.")
     return []
 
 try:
     response = SESSION.get(
         url,
         timeout=REQUEST_TIMEOUT,
-        allow_redirects=True,
+        allow_redirects=True
     )
 
 except requests.RequestException as exc:
     print(
         "FEED ERROR DE RED:",
-        exc,
+        exc
     )
     return []
 
 print(
     "HTTP:",
-    response.status_code,
+    response.status_code
 )
 
 print(
     "FINAL URL:",
-    response.url,
+    response.url
 )
 
 print(
     "CONTENT-TYPE:",
     response.headers.get(
         "content-type",
-        "desconocido",
-    ),
+        "desconocido"
+    )
 )
 
 print(
     "BYTES:",
-    len(response.content),
+    len(response.content)
 )
 
 if response.status_code != 200:
@@ -705,20 +644,20 @@ if not response.content.strip():
     )
     return []
 
-preview = (
-    response.content[:500]
-    .decode(
-        response.encoding
-        or "utf-8",
-        errors="replace",
-    )
-    .replace("\n", " ")
-    .replace("\r", " ")
+preview = response.content[:500].decode(
+    response.encoding or "utf-8",
+    errors="replace"
+).replace(
+    "\n",
+    " "
+).replace(
+    "\r",
+    " "
 )
 
 print(
     "PREVIEW:",
-    preview[:300],
+    preview[:300]
 )
 
 parsed = feedparser.parse(
@@ -728,33 +667,32 @@ parsed = feedparser.parse(
 if getattr(
     parsed,
     "bozo",
-    False,
+    False
 ):
     parser_error = getattr(
         parsed,
         "bozo_exception",
-        None,
+        None
     )
 
     print(
         "PARSER WARNING:",
         str(parser_error)[:500]
         if parser_error
-        else "XML no estándar",
+        else "XML no estándar"
     )
 
 entries = list(
     getattr(
         parsed,
         "entries",
-        [],
-    )
-    or []
+        []
+    ) or []
 )
 
 print(
     "ENTRIES:",
-    len(entries),
+    len(entries)
 )
 
 if not entries:
@@ -765,22 +703,20 @@ if not entries:
         or "<!doctype html" in low
     ):
         print(
-            "DIAGNÓSTICO: el servidor "
-            "devolvió HTML en vez de RSS."
+            "DIAGNÓSTICO: "
+            "el servidor devolvió HTML en vez de RSS."
         )
     else:
         print(
-            "DIAGNÓSTICO: no hay entradas "
-            "RSS utilizables."
+            "DIAGNÓSTICO: "
+            "no hay entradas RSS utilizables."
         )
 
     return []
 
 for entry in entries:
     try:
-        entry[
-            "_cal_feed_source"
-        ] = name
+        entry["_cal_feed_source"] = name
     except Exception:
         pass
 
@@ -797,7 +733,7 @@ print("=" * 70)
 print("INICIANDO DIAGNÓSTICO DE RSS")
 print(
     "FUENTES CONFIGURADAS:",
-    len(RSS_SOURCES),
+    len(RSS_SOURCES)
 )
 print("=" * 70)
 
@@ -809,29 +745,20 @@ for source in RSS_SOURCES:
 
     except Exception as exc:
         print(
-            "ERROR INESPERADO EN",
-            source.get(
-                "name",
-                "RSS",
-            ),
-            ":",
-            exc,
+            "ERROR INESPERADO:",
+            exc
         )
         continue
 
     for entry in entries:
         try:
             title = str(
-                entry.get(
-                    "title"
-                )
+                entry.get("title")
                 or ""
             ).strip()
 
             url = str(
-                entry.get(
-                    "link"
-                )
+                entry.get("link")
                 or ""
             ).strip()
 
@@ -844,15 +771,14 @@ for source in RSS_SOURCES:
 
             if (
                 normalized_url
-                and normalized_url
-                in seen_urls
+                and normalized_url in seen_urls
             ):
                 continue
 
             if any(
                 similarity(
                     title,
-                    old_title,
+                    old_title
                 ) >= 0.90
                 for old_title in seen_titles
             ):
@@ -874,13 +800,13 @@ for source in RSS_SOURCES:
         except Exception as exc:
             print(
                 "Entrada RSS inválida:",
-                exc,
+                exc
             )
 
 print("=" * 70)
 print(
     "TOTAL ENTRADAS RSS ÚNICAS:",
-    len(combined),
+    len(combined)
 )
 print("=" * 70)
 
@@ -901,7 +827,7 @@ for field in (
 parsed_time = getattr(
 entry,
 field,
-None,
+None
 )
 
 ```
@@ -911,7 +837,7 @@ None,
                 calendar.timegm(
                     parsed_time
                 ),
-                timezone.utc,
+                timezone.utc
             )
         except Exception:
             pass
@@ -921,7 +847,7 @@ return None
 
 def fetch_article(
 url,
-rss_content,
+rss_content
 ):
 article_text = ""
 final_url = url
@@ -931,12 +857,12 @@ try:
     response = SESSION.get(
         url,
         timeout=REQUEST_TIMEOUT,
-        allow_redirects=True,
+        allow_redirects=True
     )
 
     print(
         "Estado página:",
-        response.status_code,
+        response.status_code
     )
 
     final_url = (
@@ -950,7 +876,7 @@ try:
     ):
         soup = BeautifulSoup(
             response.text,
-            "html.parser",
+            "html.parser"
         )
 
         for tag in soup.find_all(
@@ -970,18 +896,14 @@ try:
 
         paragraphs = []
 
-        for paragraph in soup.find_all(
-            "p"
-        ):
+        for paragraph in soup.find_all("p"):
             text = paragraph.get_text(
                 " ",
-                strip=True,
+                strip=True
             )
 
             if (
-                45
-                <= len(text)
-                <= 4000
+                45 <= len(text) <= 4000
             ):
                 paragraphs.append(
                     text
@@ -1019,51 +941,51 @@ try:
 except requests.RequestException as exc:
     print(
         "No se pudo extraer artículo:",
-        exc,
+        exc
     )
 
 except Exception as exc:
     print(
         "Error procesando artículo:",
-        exc,
+        exc
     )
 
 print(
     "Longitud artículo:",
-    len(article_text),
+    len(article_text)
 )
 
 print(
     "Longitud RSS:",
-    len(rss_content),
+    len(rss_content)
 )
 
 print(
     "URL final:",
-    final_url,
+    final_url
 )
 
 if len(article_text) >= 300:
     return (
         article_text,
-        final_url,
+        final_url
     )
 
 if len(rss_content) >= 100:
     return (
         rss_content[:MAX_RSS_CHARS],
-        final_url,
+        final_url
     )
 
 return (
     "",
-    final_url,
+    final_url
 )
 ```
 
 # ================================================================
 
-# CANDIDATE RANKING
+# CANDIDATES
 
 # ================================================================
 
@@ -1084,9 +1006,7 @@ url
 
 ```
 if domain in SOURCE_TIERS:
-    return SOURCE_TIERS[
-        domain
-    ]
+    return SOURCE_TIERS[domain]
 
 for known, tier in SOURCE_TIERS.items():
     if domain.endswith(
@@ -1111,7 +1031,7 @@ return any(
 
 def candidate_priority(
 candidate,
-now,
+now
 ):
 published_time = candidate.get(
 "published_time"
@@ -1122,19 +1042,17 @@ if published_time:
     age_hours = max(
         0.0,
         (
-            now
-            - published_time
+            now - published_time
         ).total_seconds()
-        / 3600,
+        / 3600
     )
 
     recency_score = max(
         0.0,
-        36.0
-        - min(
+        36.0 - min(
             age_hours,
-            36.0,
-        ),
+            36.0
+        )
     )
 
 else:
@@ -1144,21 +1062,19 @@ quality_score = (
     source_quality(
         candidate.get(
             "google_url",
-            "",
+            ""
         )
-    )
-    * 10
+    ) * 10
 )
 
 content_score = min(
     len(
         candidate.get(
             "rss_content",
-            "",
+            ""
         )
-    )
-    / 250.0,
-    20.0,
+    ) / 250.0,
+    20.0
 )
 
 low_signal_penalty = (
@@ -1166,7 +1082,7 @@ low_signal_penalty = (
     if low_signal_title(
         candidate.get(
             "title",
-            "",
+            ""
         )
     )
     else 0.0
@@ -1182,7 +1098,7 @@ return (
 
 def get_candidates(
 feed,
-history,
+history
 ):
 now = datetime.now(
 timezone.utc
@@ -1193,10 +1109,7 @@ candidates = []
 
 entries = (
     feed.entries
-    if hasattr(
-        feed,
-        "entries",
-    )
+    if hasattr(feed, "entries")
     else feed
 )
 
@@ -1207,25 +1120,25 @@ entries = list(
 published_ids = set(
     history.get(
         "published",
-        [],
+        []
     )
 )
 
 history_urls = set(
     history.get(
         "source_urls",
-        [],
+        []
     )
 )
 
 history_titles = history.get(
     "titles",
-    [],
+    []
 )
 
 if not isinstance(
     history_titles,
-    list,
+    list
 ):
     history_titles = []
 
@@ -1236,21 +1149,17 @@ seen_feed_titles = []
 for entry in entries:
     if not hasattr(
         entry,
-        "get",
+        "get"
     ):
         continue
 
     title = str(
-        entry.get(
-            "title"
-        )
+        entry.get("title")
         or ""
     ).strip()
 
     google_url = str(
-        entry.get(
-            "link"
-        )
+        entry.get("link")
         or ""
     ).strip()
 
@@ -1262,14 +1171,12 @@ for entry in entries:
     ):
         print(
             "Ignorada por filtro local:",
-            title,
+            title
         )
         continue
 
-    published_time = (
-        extract_entry_time(
-            entry
-        )
+    published_time = extract_entry_time(
+        entry
     )
 
     if (
@@ -1294,7 +1201,7 @@ for entry in entries:
 
     item_id = stable_id(
         title,
-        normalized_url,
+        normalized_url
     )
 
     if item_id in published_ids:
@@ -1302,15 +1209,14 @@ for entry in entries:
 
     if (
         normalized_url
-        and normalized_url
-        in history_urls
+        and normalized_url in history_urls
     ):
         continue
 
     if any(
         similarity(
             title,
-            old_title,
+            old_title
         ) >= 0.88
         for old_title in history_titles
     ):
@@ -1321,15 +1227,14 @@ for entry in entries:
 
     if (
         normalized_url
-        and normalized_url
-        in seen_feed_urls
+        and normalized_url in seen_feed_urls
     ):
         continue
 
     if any(
         similarity(
             title,
-            old_title,
+            old_title
         ) >= 0.90
         for old_title in seen_feed_titles
     ):
@@ -1338,15 +1243,13 @@ for entry in entries:
     rss_content = clean_html(
         entry.get(
             "summary"
-        )
-        or ""
+        ) or ""
     )
 
     description = clean_html(
         entry.get(
             "description"
-        )
-        or ""
+        ) or ""
     )
 
     combined_content = (
@@ -1390,9 +1293,9 @@ candidates.sort(
     key=lambda item:
     candidate_priority(
         item,
-        now,
+        now
     ),
-    reverse=True,
+    reverse=True
 )
 
 return candidates
@@ -1411,7 +1314,7 @@ EDITOR_SCHEMA = {
 "type": "string",
 "enum": [
 "PUBLICAR",
-"DESCARTAR",
+"DESCARTAR"
 ],
 },
 "reason": {
@@ -1422,7 +1325,7 @@ EDITOR_SCHEMA = {
 "enum": [
 "Noticias",
 "Análisis",
-"Opinión",
+"Opinión"
 ],
 },
 "score": {
@@ -1451,17 +1354,17 @@ def build_editorial_prompt(
 title,
 source_url,
 source_content,
-history,
+history
 ):
 previous = history.get(
 "titles",
-[],
+[]
 )
 
 ```
 if not isinstance(
     previous,
-    list,
+    list
 ):
     previous = []
 
@@ -1473,54 +1376,53 @@ previous_text = "\n".join(
 return f"""
 ```
 
-Eres CAL BOT V21, editor de noticias de CAL FAMILY, una comunidad dedicada a GTA VI.
+Eres CAL BOT V21, editor de noticias de CAL FAMILY,
+una comunidad dedicada a GTA VI.
 
 OBJETIVO:
-Selecciona información periodística útil y redacta un borrador en español.
+Selecciona información útil y redacta un borrador
+periodístico en español.
 
 CLASIFICACIÓN:
-Usa exactamente una:
 
-* Noticias: hechos, declaraciones, cifras, fechas, decisiones o información verificable.
-* Análisis: un medio fiable interpreta material real y aporta contexto u observaciones sustanciales.
-* Opinión: reacción personal, review, gusto, predicción o especulación.
+* Noticias: hechos, declaraciones, cifras, fechas,
+  decisiones o información verificable.
+* Análisis: interpretación periodística sustancial
+  basada en material real.
+* Opinión: reacción personal, review, gusto,
+  predicción o especulación.
 
 OPINIÓN:
-La opinión NO se publica automáticamente.
+Nunca publiques automáticamente contenido de opinión.
 
 FUENTES:
-No necesitas una fuente oficial de Rockstar.
-Una fuente secundaria fiable puede ser suficiente si identifica claramente el dato,
-declaración, evidencia o contexto.
+No es obligatorio que la fuente sea Rockstar Games.
+Una fuente secundaria fiable puede ser suficiente
+si identifica claramente el dato o contexto.
 
-EXTENDED LOOK / TRÁILER / MATERIAL PROMOCIONAL:
+EXTENDED LOOK / TRÁILER:
 No lo descartes automáticamente.
-Si un medio fiable analiza material real y aporta observaciones concretas,
-contexto verificable o conclusiones sustanciales, puede ser "Análisis".
+Si aporta observaciones concretas, contexto o análisis
+sustancial puede clasificarse como Análisis.
 
-LEAKS / CYBERLEAKS:
-Descarta cuando la afirmación principal depende de material obtenido mediante:
-hackeo, intrusión, acceso no autorizado, robo de archivos, credenciales,
-bases de datos robadas, código fuente robado o cyberleaks.
+LEAKS:
+Descarta si la afirmación principal depende de material
+obtenido mediante hackeo, intrusión, acceso no autorizado,
+robo de archivos, credenciales, bases de datos o código fuente.
 
-NO descartes automáticamente un artículo porque mencione un leak histórico,
-explique una filtración pasada o informe sobre la respuesta de Rockstar.
-
-Pregunta:
-"¿La noticia necesita el material obtenido ilícitamente para sostener su afirmación principal?"
-
-Si sí -> DESCARTAR.
-Si solo lo menciona como contexto -> puede ser válida.
+No descartes una noticia únicamente porque mencione
+un leak histórico como contexto.
 
 DUPLICADOS:
-Compara el hecho central, no solo el título.
-Si aporta información sustancialmente nueva, puede ser válido.
+Compara el hecho central.
+Si aporta información sustancialmente nueva puede publicarse.
+Si repite la misma información sin novedad, descártala.
 
 ESTÁNDAR:
-Una candidata puede publicarse si ofrece al menos una:
+Debe aportar al menos una:
 
 * declaración atribuida;
-* fecha o cambio confirmado;
+* fecha confirmada;
 * cifra;
 * información de desarrollo;
 * plataformas;
@@ -1530,47 +1432,35 @@ Una candidata puede publicarse si ofrece al menos una:
 * características;
 * marketing;
 * contexto verificable;
-* análisis periodístico sustancial.
-
-NO exijas una exclusiva mundial.
+* análisis sustancial.
 
 REDACCIÓN:
 
 * Español natural.
-* Aproximadamente 550-950 caracteres.
-* Explica primero qué ocurrió y después por qué importa.
-* Atribuye correctamente.
+* Entre 550 y 950 caracteres aproximadamente.
+* Explica qué ocurrió y por qué importa.
+* Atribuye correctamente la información.
 * No inventes nombres, cifras, fechas ni citas.
-* No conviertas posibilidades en hechos.
 * No pongas la URL dentro de content.
-* Si no hay suficiente información, DESCARTAR.
-
-DESCARTA:
-
-* rumor sin respaldo;
-* opinión pura;
-* SEO/FAQ;
-* clickbait;
-* cyberleak dependiente del material ilícito;
-* duplicado sin novedad.
+* Si no existe información suficiente, DESCARTAR.
 
 PUNTUACIÓN:
 90-100 excelente
 80-89 muy buena
-75-79 válida y publicable
+75-79 válida
 60-74 insuficiente
 0-59 no publicable
 
 DECISIÓN:
-PUBLICAR solo si score >= 75 y category != "Opinión".
+PUBLICAR solamente si score >= 75
+y category != "Opinión".
 
-Devuelve SOLO JSON válido.
+Devuelve exclusivamente JSON válido.
 
-HISTORIAL RECIENTE:
+HISTORIAL:
 {previous_text}
 
-ARTÍCULO CANDIDATO:
-
+ARTÍCULO:
 TÍTULO:
 {title}
 
@@ -1583,14 +1473,14 @@ CONTENIDO:
 
 # ================================================================
 
-# JSON
+# JSON PARSER
 
 # ================================================================
 
 def extract_json(text):
 if not isinstance(
 text,
-str,
+str
 ):
 raise ValueError(
 "Gemini no devolvió texto."
@@ -1603,13 +1493,13 @@ text = re.sub(
     r"^```(?:json)?\s*",
     "",
     text,
-    flags=re.I,
+    flags=re.I
 )
 
 text = re.sub(
     r"\s*```$",
     "",
-    text,
+    text
 ).strip()
 
 try:
@@ -1630,9 +1520,7 @@ except json.JSONDecodeError:
         )
 
     return json.loads(
-        text[
-            start:end + 1
-        ]
+        text[start:end + 1]
     )
 ````
 
@@ -1650,7 +1538,7 @@ f"v1beta/models/{model}:generateContent"
 
 def parse_retry_after(
 response,
-default_seconds,
+default_seconds
 ):
 value = response.headers.get(
 "Retry-After"
@@ -1661,11 +1549,11 @@ try:
     if value is not None:
         return max(
             1.0,
-            float(value),
+            float(value)
         )
 except (
     TypeError,
-    ValueError,
+    ValueError
 ):
     pass
 
@@ -1676,13 +1564,13 @@ def ask_gemini(
 title,
 source_url,
 source_content,
-history,
+history
 ):
 prompt = build_editorial_prompt(
 title,
 source_url,
 source_content,
-history,
+history
 )
 
 ```
@@ -1707,13 +1595,13 @@ payload = {
 last_error = None
 
 for model in GEMINI_MODELS:
-    endpoint = gemini_endpoint(
+    print(
+        "Intentando Gemini:",
         model
     )
 
-    print(
-        "Intentando Gemini:",
-        model,
+    endpoint = gemini_endpoint(
+        model
     )
 
     for attempt in range(3):
@@ -1727,12 +1615,12 @@ for model in GEMINI_MODELS:
                         GEMINI_KEY,
                 },
                 json=payload,
-                timeout=GEMINI_TIMEOUT,
+                timeout=GEMINI_TIMEOUT
             )
 
             print(
                 "Gemini HTTP:",
-                response.status_code,
+                response.status_code
             )
 
             if response.status_code == 200:
@@ -1742,13 +1630,7 @@ for model in GEMINI_MODELS:
                     "candidates"
                 ) or []
 
-                if (
-                    not isinstance(
-                        candidates,
-                        list,
-                    )
-                    or not candidates
-                ):
+                if not candidates:
                     raise RuntimeError(
                         "Gemini no devolvió candidates."
                     )
@@ -1757,31 +1639,25 @@ for model in GEMINI_MODELS:
                     candidates[0]
                     if isinstance(
                         candidates[0],
-                        dict,
+                        dict
                     )
                     else {}
                 )
 
-                content = (
-                    first.get(
-                        "content"
-                    )
-                    or {}
-                )
+                content = first.get(
+                    "content"
+                ) or {}
 
-                parts = (
-                    content.get(
-                        "parts"
-                    )
-                    or []
-                )
+                parts = content.get(
+                    "parts"
+                ) or []
 
                 text = ""
 
                 for part in parts:
                     if not isinstance(
                         part,
-                        dict,
+                        dict
                     ):
                         continue
 
@@ -1792,7 +1668,7 @@ for model in GEMINI_MODELS:
                     if (
                         isinstance(
                             value,
-                            str,
+                            str
                         )
                         and value.strip()
                     ):
@@ -1810,10 +1686,10 @@ for model in GEMINI_MODELS:
 
                 if not isinstance(
                     result,
-                    dict,
+                    dict
                 ):
                     raise RuntimeError(
-                        "Gemini no devolvió un objeto JSON."
+                        "Respuesta Gemini inválida."
                     )
 
                 return result
@@ -1837,17 +1713,17 @@ for model in GEMINI_MODELS:
                         15.0,
                         2.0 ** (
                             attempt + 1
-                        ),
+                        )
                     )
                     + random.uniform(
                         0,
-                        0.75,
-                    ),
+                        0.75
+                    )
                 )
 
                 print(
-                    f"Gemini temporalmente no disponible. "
-                    f"Reintentando en {wait:.1f}s..."
+                    "Reintentando Gemini "
+                    f"en {wait:.1f}s..."
                 )
 
                 time.sleep(
@@ -1856,52 +1732,61 @@ for model in GEMINI_MODELS:
                 continue
 
             print(
-                "Error no recuperable; "
-                "probando siguiente modelo."
+                "Modelo no disponible; "
+                "probando fallback."
             )
             break
 
-        except (
-            requests.RequestException,
-            ValueError,
-            json.JSONDecodeError,
-        ) as exc:
-            last_error = str(
-                exc
-            )
+        except requests.RequestException as exc:
+            last_error = str(exc)
 
             print(
-                "Error Gemini:",
-                exc,
+                "Error de red Gemini:",
+                exc
             )
 
             if attempt < 2:
                 time.sleep(
-                    2.0 * (
+                    2 * (
+                        attempt + 1
+                    )
+                )
+
+        except (
+            ValueError,
+            json.JSONDecodeError
+        ) as exc:
+            last_error = str(exc)
+
+            print(
+                "Error JSON Gemini:",
+                exc
+            )
+
+            if attempt < 2:
+                time.sleep(
+                    2 * (
                         attempt + 1
                     )
                 )
 
         except Exception as exc:
-            last_error = str(
-                exc
-            )
+            last_error = str(exc)
 
             print(
-                "Error inesperado Gemini:",
-                exc,
+                "Error Gemini:",
+                exc
             )
 
             if attempt < 2:
                 time.sleep(
-                    2.0 * (
+                    2 * (
                         attempt + 1
                     )
                 )
 
 print(
-    "ERROR: ningún modelo de Gemini "
-    "respondió correctamente."
+    "ERROR: ningún modelo Gemini respondió."
 )
 
 print(
@@ -1913,16 +1798,16 @@ return None
 
 # ================================================================
 
-# EDITORIAL RESULT
+# EDITOR RESULT
 
 # ================================================================
 
 def normalize_editor_result(
-result,
+result
 ):
 if not isinstance(
 result,
-dict,
+dict
 ):
 return None
 
@@ -1966,12 +1851,12 @@ try:
     score = float(
         result.get(
             "score",
-            0,
+            0
         )
     )
 except (
     TypeError,
-    ValueError,
+    ValueError
 ):
     score = 0.0
 
@@ -1979,20 +1864,20 @@ score = max(
     0.0,
     min(
         100.0,
-        score,
-    ),
+        score
+    )
 )
 
 if decision not in (
     "PUBLICAR",
-    "DESCARTAR",
+    "DESCARTAR"
 ):
     decision = "DESCARTAR"
 
 if category not in (
     "Noticias",
     "Análisis",
-    "Opinión",
+    "Opinión"
 ):
     category = "Noticias"
 
@@ -2028,7 +1913,7 @@ return {
 
 def trim_discord_content(
 text,
-limit=SAFE_DISCORD_LIMIT,
+limit=SAFE_DISCORD_LIMIT
 ):
 text = str(
 text or ""
@@ -2060,7 +1945,7 @@ def build_discord_message(
 category,
 title,
 content,
-source_url,
+source_url
 ):
 date_text = datetime.now(
 timezone.utc
@@ -2083,22 +1968,19 @@ message = (
     f"🔗 **Fuente original:** "
     f"<{source_url}>\n\n"
     f"⚠️ **REVISIÓN REQUERIDA**\n"
-    f"Este contenido fue preparado por "
-    f"Cal Bot como borrador editorial. "
-    f"Revisa la información antes de "
-    f"publicarlo en #noticias.\n\n"
+    f"Este contenido fue preparado por Cal Bot "
+    f"como borrador editorial. Revisa la "
+    f"información antes de publicarlo.\n\n"
     f"-# Cal Bot · {date_text}"
 )
 
 return trim_discord_content(
     message,
-    SAFE_DISCORD_LIMIT,
+    SAFE_DISCORD_LIMIT
 )
 ```
 
-def send_discord(
-message,
-):
+def send_discord(message):
 if not WEBHOOK:
 print(
 "Discord: webhook vacío."
@@ -2109,32 +1991,29 @@ return False
 payload = {
     "content": message,
     "username": "Cal Bot",
-    "allowed_mentions": {
-        "parse": []
-    },
+    "allowed_mentions": (
+        {
+            "roles": [ROLE_ID]
+        }
+        if ROLE_ID
+        else {
+            "parse": []
+        }
+    ),
 }
-
-if ROLE_ID:
-    payload[
-        "allowed_mentions"
-    ] = {
-        "roles": [
-            ROLE_ID
-        ]
-    }
 
 for attempt in range(3):
     try:
         response = SESSION.post(
             WEBHOOK,
             json=payload,
-            timeout=DISCORD_TIMEOUT,
+            timeout=DISCORD_TIMEOUT
         )
 
     except requests.RequestException as exc:
         print(
-            "ERROR DE CONEXIÓN CON DISCORD:",
-            exc,
+            "ERROR DISCORD:",
+            exc
         )
 
         if attempt < 2:
@@ -2149,39 +2028,37 @@ for attempt in range(3):
 
     print(
         "Discord HTTP:",
-        response.status_code,
+        response.status_code
     )
 
     if response.status_code in (
         200,
-        204,
+        204
     ):
         return True
 
     if response.status_code == 429:
         try:
             data = response.json()
-
             wait = float(
                 data.get(
                     "retry_after",
-                    2,
+                    2
                 )
             )
-
         except Exception:
             wait = 2
 
         wait = min(
             max(
                 wait,
-                1,
+                1
             ),
-            20,
+            20
         )
 
         print(
-            f"Discord rate limit. "
+            f"Rate limit Discord. "
             f"Esperando {wait:.1f}s..."
         )
 
@@ -2192,7 +2069,7 @@ for attempt in range(3):
 
     print(
         "Respuesta Discord:",
-        response.text[:2000],
+        response.text[:2000]
     )
 
     if (
@@ -2228,58 +2105,52 @@ try:
 
 except Exception as exc:
     print(
-        "ERROR GENERAL LEYENDO RSS:",
-        exc,
+        "ERROR GENERAL RSS:",
+        exc
     )
     return
 
 if not feed_entries:
     print("=" * 70)
     print(
-        "NO SE ENCONTRARON NOTICIAS "
-        "EN NINGÚN FEED."
-    )
-    print(
-        "Revisa HTTP, CONTENT-TYPE, "
-        "BYTES, PREVIEW y ENTRIES."
+        "NO SE ENCONTRARON NOTICIAS."
     )
     print("=" * 70)
     return
 
 candidates = get_candidates(
     feed_entries,
-    history,
+    history
 )
 
 print("=" * 70)
 print(
-    "CANDIDATAS DESPUÉS DE FILTROS:",
-    len(candidates),
+    "CANDIDATAS:",
+    len(candidates)
 )
 print("=" * 70)
 
 if not candidates:
     print(
         "Ninguna noticia nueva pasó "
-        "los filtros iniciales."
+        "los filtros."
     )
     return
 
 limit = min(
     len(candidates),
-    MAX_CANDIDATES_TO_EVALUATE,
+    MAX_CANDIDATES_TO_EVALUATE
 )
 
 evaluated_results = []
 
 for index, candidate in enumerate(
     candidates[:limit],
-    start=1,
+    start=1
 ):
     print("=" * 70)
     print(
-        f"EVALUANDO CANDIDATA "
-        f"{index}/{limit}"
+        f"EVALUANDO {index}/{limit}"
     )
     print(
         candidate["title"]
@@ -2287,33 +2158,27 @@ for index, candidate in enumerate(
     print(
         candidate["google_url"]
     )
-    print(
-        "Feed:",
-        candidate.get(
-            "feed_source"
-        ),
-    )
     print("=" * 70)
 
     try:
-        (
-            source_content,
-            final_source_url,
-        ) = fetch_article(
-            candidate["google_url"],
-            candidate["rss_content"],
+        source_content, final_source_url = (
+            fetch_article(
+                candidate["google_url"],
+                candidate["rss_content"]
+            )
         )
 
     except Exception as exc:
         print(
             "Error obteniendo artículo:",
-            exc,
+            exc
         )
         continue
 
     if not source_content:
         print(
-            "Descartada: información insuficiente."
+            "Descartada: "
+            "información insuficiente."
         )
         continue
 
@@ -2324,24 +2189,24 @@ for index, candidate in enumerate(
     history_hashes = set(
         history.get(
             "content_hashes",
-            [],
+            []
         )
     )
 
     if source_hash in history_hashes:
         print(
-            "Descartada: contenido "
-            "idéntico al historial."
+            "Descartada: "
+            "contenido duplicado."
         )
         continue
 
     if looks_like_leak_or_cyberleak(
         candidate["title"],
-        source_content,
+        source_content
     ):
         print(
             "Descartada por señales "
-            "locales de leak/cyberleak."
+            "fuertes de cyberleak."
         )
         continue
 
@@ -2355,20 +2220,12 @@ for index, candidate in enumerate(
         "CAL BOT EVALUANDO CON GEMINI..."
     )
 
-    try:
-        raw_result = ask_gemini(
-            candidate["title"],
-            editorial_source,
-            source_content,
-            history,
-        )
-
-    except Exception as exc:
-        print(
-            "Fallo de Gemini:",
-            exc,
-        )
-        continue
+    raw_result = ask_gemini(
+        candidate["title"],
+        editorial_source,
+        source_content,
+        history
+    )
 
     if raw_result is None:
         continue
@@ -2384,82 +2241,62 @@ for index, candidate in enumerate(
         continue
 
     print(
-        f"Resultado: "
-        f"{result['decision']} | "
-        f"{result['category']} | "
-        f"{result['score']:.1f}/100"
+        "Resultado:",
+        result["decision"],
+        "|",
+        result["category"],
+        "|",
+        f'{result["score"]:.1f}/100'
     )
 
-    if (
-        result["decision"]
-        != "PUBLICAR"
-    ):
+    if result["decision"] != "PUBLICAR":
         print(
             "Motivo:",
             result["reason"]
-            or "No cumple el estándar.",
+            or "No cumple."
         )
         continue
 
-    ai_title = result[
-        "title"
-    ]
+    ai_title = result["title"]
+    ai_content = result["content"]
+    category = result["category"]
+    score = result["score"]
 
-    ai_content = result[
-        "content"
-    ]
-
-    category = result[
-        "category"
-    ]
-
-    score = result[
-        "score"
-    ]
-
-    if (
-        not ai_title
-        or not ai_content
-    ):
+    if not ai_title or not ai_content:
         print(
-            "Descartada: "
-            "respuesta incompleta."
+            "Descartada: respuesta incompleta."
         )
         continue
 
     if published_title_duplicate(
         ai_title,
         history,
-        0.86,
+        0.86
     ):
         print(
             "Descartada: "
-            "título final duplicado."
+            "título duplicado."
         )
         continue
 
     ai_content = re.sub(
-        r"(?:🔗\s*)?"
-        r"\**Fuente original:\**.*?"
-        r"(?=\n|$)",
+        r"(?:🔗\s*)?\**Fuente original:\**.*?(?=\n|$)",
         "",
         ai_content,
-        flags=re.I,
+        flags=re.I
     ).strip()
 
-    final_message = (
-        build_discord_message(
-            category,
-            ai_title,
-            ai_content,
-            final_source_url,
-        )
+    final_message = build_discord_message(
+        category,
+        ai_title,
+        ai_content,
+        final_source_url
     )
 
-    if len(final_message) > MAX_DISCORD_CONTENT:
+    if len(final_message) > 2000:
         print(
-            "Descartada: mensaje "
-            "supera el límite de Discord."
+            "Descartada: "
+            "mensaje demasiado largo."
         )
         continue
 
@@ -2472,16 +2309,10 @@ for index, candidate in enumerate(
             "content": ai_content,
             "category": category,
             "score": score,
-            "reason": result[
-                "reason"
-            ],
+            "reason": result["reason"],
             "message": final_message,
         }
     )
-
-# ============================================================
-# FINAL SELECTION
-# ============================================================
 
 if not evaluated_results:
     print("=" * 70)
@@ -2503,40 +2334,32 @@ evaluated_results.sort(
         item["score"],
         category_priority.get(
             item["category"],
-            0,
+            0
         ),
         source_quality(
             item["source_url"]
         ),
     ),
-    reverse=True,
+    reverse=True
 )
 
-best = evaluated_results[
-    0
-]
+best = evaluated_results[0]
 
 print("=" * 70)
 print(
-    "MEJOR NOTICIA SELECCIONADA"
+    "MEJOR NOTICIA:"
 )
 print(
     "Título:",
-    best["title"],
+    best["title"]
 )
 print(
     "Categoría:",
-    best["category"],
+    best["category"]
 )
 print(
     "Puntuación:",
-    f'{best["score"]:.1f}/100',
-)
-print(
-    "Candidatas publicables:",
-    len(
-        evaluated_results
-    ),
+    f'{best["score"]:.1f}/100'
 )
 print("=" * 70)
 
@@ -2544,41 +2367,36 @@ if not send_discord(
     best["message"]
 ):
     print(
-        "La noticia NO se guardará "
-        "como publicada porque "
-        "Discord no confirmó el envío."
+        "Discord NO confirmó "
+        "el envío."
     )
 
     raise SystemExit(1)
 
-# ============================================================
-# HISTORY ONLY AFTER DISCORD SUCCESS
-# ============================================================
-
 history.setdefault(
     "published",
-    [],
+    []
 ).append(
     best["candidate"]["id"]
 )
 
 history.setdefault(
     "titles",
-    [],
+    []
 ).append(
     best["title"]
 )
 
 history.setdefault(
     "content_hashes",
-    [],
+    []
 ).append(
     best["source_hash"]
 )
 
 history.setdefault(
     "source_urls",
-    [],
+    []
 ).append(
     canonical_url(
         best["source_url"]
@@ -2594,8 +2412,10 @@ print(
     "DISCORD CONFIRMÓ."
 )
 print(
-    "NOTICIA ENVIADA Y GUARDADA "
-    "EN HISTORIAL."
+    "NOTICIA ENVIADA."
+)
+print(
+    "HISTORIAL ACTUALIZADO."
 )
 print("=" * 70)
 ```
