@@ -1,10 +1,30 @@
-name: test
+name: CAL Bot
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  cal-bot:
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "YAML OK"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run CAL Bot
+        env:
+          NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DISCORD_ROLE_ID: ${{ secrets.DISCORD_ROLE_ID }}
+        run: |
+          python cal_bot.py
