@@ -25,6 +25,7 @@ WEBHOOK = os.environ.get("NEWS_DRAFT_WEBHOOK", "").strip()
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
 HISTORY_FILE = os.environ.get("HISTORY_FILE", "seen_news.json")
+
 ROLE_ID = os.environ.get(
 "DISCORD_ROLE_ID",
 "1504921814759903343"
@@ -139,8 +140,6 @@ SOURCE_TIERS = {
 "bloomberg.com": 3,
 "bbc.com": 3,
 "apnews.com": 3,
-
-```
 "ign.com": 2,
 "gamespot.com": 2,
 "eurogamer.net": 2,
@@ -154,8 +153,6 @@ SOURCE_TIERS = {
 "pushsquare.com": 2,
 "playstation.com": 2,
 "xbox.com": 2,
-```
-
 }
 
 GENERIC_LOW_SIGNAL_HINTS = (
@@ -222,6 +219,7 @@ for old, new in replacements.items():
     text = text.replace(old, new)
 
 text = re.sub(r"https?://\S+", " ", text)
+
 text = re.sub(
     r"[^a-z0-9áéíóúüñ ]+",
     " ",
@@ -243,7 +241,11 @@ b = normalize_text(b)
 if not a or not b:
     return 0.0
 
-return SequenceMatcher(None, a, b).ratio()
+return SequenceMatcher(
+    None,
+    a,
+    b
+).ratio()
 ```
 
 def canonical_url(url):
