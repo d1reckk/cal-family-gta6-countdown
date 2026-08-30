@@ -1,5 +1,4 @@
 name: GTA VI News Bot
-
 on:
   workflow_dispatch:
   schedule:
@@ -16,28 +15,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check files
-        run: |
-          echo "Files in repository:"
-          ls -la
-          echo "Checking required files..."
-
-          test -f requirements.txt || {
-            echo "ERROR: requirements.txt not found"
-            exit 1
-          }
-
-          test -f cal_bot.py || {
-            echo "ERROR: cal_bot.py not found"
-            exit 1
-          }
-
-          echo "All required files found."
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Check required files
+        run: |
+          echo "Checking repository files..."
+          ls -la
+
+          if [ ! -f requirements.txt ]; then
+            echo "ERROR: requirements.txt not found"
+            exit 1
+          fi
+
+          if [ ! -f cal_bot.py ]; then
+            echo "ERROR: cal_bot.py not found"
+            exit 1
+          fi
+
+          echo "Required files found."
 
       - name: Install dependencies
         run: |
@@ -53,17 +51,17 @@ jobs:
           NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          test -n "$NEWS_DRAFT_WEBHOOK" || {
+          if [ -z "$NEWS_DRAFT_WEBHOOK" ]; then
             echo "ERROR: NEWS_DRAFT_WEBHOOK is missing"
             exit 1
-          }
+          fi
 
-          test -n "$GEMINI_API_KEY" || {
+          if [ -z "$GEMINI_API_KEY" ]; then
             echo "ERROR: GEMINI_API_KEY is missing"
             exit 1
-          }
+          fi
 
-          echo "Required secrets are configured."
+          echo "Secrets OK."
 
       - name: Run bot
         env:
@@ -72,24 +70,4 @@ jobs:
           DISCORD_ROLE_ID: ${{ secrets.DISCORD_ROLE_ID }}
         run: |
           python cal_bot.py
-
-      - name: Save news history
-        if: always()
-        run: |
-          if [ ! -f seen_news.json ]; then
-            echo "No seen_news.json to save."
-            exit 0
-          fi
-
-          if git diff --quiet -- seen_news.json; then
-            echo "No history changes."
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add seen_news.json
-          git commit -m "Update news history"
-          git push
 ```
