@@ -154,7 +154,7 @@ jobs:
 
           content = (
               "🌴 **GRAND THEFT AUTO VI**\n\n"
-              f"⏳ **Faltan {days} días para GTA VI — CAL FAMILY**"
+              f"⏳ **Faltan {days} días para GTA VI**"
           )
 
           with open("payload.json", "w") as f:
