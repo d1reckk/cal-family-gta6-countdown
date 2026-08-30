@@ -38,10 +38,10 @@ jobs:
           days = max(remaining.days, 0)
 
           # ============================================================
-          # CANVAS
+          # CANVAS / DISEÑO DE LA TARJETA
           # ============================================================
 
-          W, H = 1280, 720
+          W, H = 1200, 600
 
           img = Image.new("RGB", (W, H))
           pixels = img.load()
@@ -50,23 +50,20 @@ jobs:
           # FONDO VICE CITY / SUNSET NEÓN
           # ============================================================
 
-          top = (18, 8, 38)
-          middle = (77, 14, 67)
-          bottom = (236, 74, 126)
+          top = (20, 7, 35)
+          middle = (72, 12, 61)
+          bottom = (175, 31, 91)
 
           for y in range(H):
               t = y / (H - 1)
 
-              if t < 0.55:
-                  p = t / 0.55
-
+              if t < 0.58:
+                  p = t / 0.58
                   r = int(top[0] + (middle[0] - top[0]) * p)
                   g = int(top[1] + (middle[1] - top[1]) * p)
                   b = int(top[2] + (middle[2] - top[2]) * p)
-
               else:
-                  p = (t - 0.55) / 0.45
-
+                  p = (t - 0.58) / 0.42
                   r = int(middle[0] + (bottom[0] - middle[0]) * p)
                   g = int(middle[1] + (bottom[1] - middle[1]) * p)
                   b = int(middle[2] + (bottom[2] - middle[2]) * p)
@@ -76,100 +73,55 @@ jobs:
 
           draw = ImageDraw.Draw(img)
 
+          # Textura sutil del fondo
+          random.seed(6)
+          for _ in range(9000):
+              x = random.randrange(W)
+              y = random.randrange(H)
+              base = pixels[x, y]
+              delta = random.choice([-3, -2, -1, 1, 2, 3])
+              pixels[x, y] = tuple(max(0, min(255, c + delta)) for c in base)
+
           # ============================================================
           # ESTRELLAS
           # ============================================================
 
           random.seed(6)
-
-          for _ in range(130):
-              x = random.randint(20, W - 20)
-              y = random.randint(15, 300)
-
+          for _ in range(95):
+              x = random.randint(15, W - 15)
+              y = random.randint(12, 250)
               radius = random.choice([1, 1, 1, 2])
-
               draw.ellipse(
-                  (
-                      x - radius,
-                      y - radius,
-                      x + radius,
-                      y + radius
-                  ),
+                  (x - radius, y - radius, x + radius, y + radius),
                   fill=(255, 220, 235)
               )
 
           # ============================================================
-          # SOL / GLOW DEL HORIZONTE
+          # GLOW DEL HORIZONTE
           # ============================================================
 
           glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
           glow_draw = ImageDraw.Draw(glow)
-
           cx = W // 2
-          cy = 485
+          cy = 560
 
-          for radius in range(230, 5, -5):
-              alpha = int(2 + (230 - radius) * 0.12)
-
+          for radius in range(210, 5, -5):
+              alpha = int(2 + (210 - radius) * 0.10)
               glow_draw.ellipse(
-                  (
-                      cx - radius,
-                      cy - radius,
-                      cx + radius,
-                      cy + radius
-                  ),
-                  fill=(255, 125, 150, min(alpha, 55))
+                  (cx - radius, cy - radius, cx + radius, cy + radius),
+                  fill=(255, 110, 150, min(alpha, 45))
               )
 
           glow = glow.filter(ImageFilter.GaussianBlur(25))
           img = Image.alpha_composite(img.convert("RGBA"), glow)
-
           draw = ImageDraw.Draw(img)
 
           # ============================================================
-          # SOL
-          # ============================================================
-
-          draw.ellipse(
-              (
-                  cx - 105,
-                  cy - 105,
-                  cx + 105,
-                  cy + 105
-              ),
-              fill=(255, 177, 139, 235)
-          )
-
-          # Líneas horizontales sobre el sol
-          for offset in range(-65, 70, 18):
-              draw.rectangle(
-                  (
-                      cx - 110,
-                      cy + offset,
-                      cx + 110,
-                      cy + offset + 6
-                  ),
-                  fill=(236, 74, 126, 170)
-              )
-
-          # ============================================================
-          # HORIZONTE
-          # ============================================================
-
-          horizon_y = 540
-
-          draw.rectangle(
-              (0, horizon_y, W, H),
-              fill=(22, 7, 27, 210)
-          )
-
-          # ============================================================
-          # PALMERAS DECORATIVAS
+          # PALMERAS / SILUETAS INFERIORES
           # ============================================================
 
           def palm(draw, x, base_y, height, side=1):
-              trunk_color = (20, 8, 28, 235)
-
+              trunk_color = (18, 6, 25, 235)
               top_x = x + int(18 * side)
               top_y = base_y - height
 
@@ -179,28 +131,22 @@ jobs:
                   (top_x + 5, top_y),
                   (top_x - 8, top_y)
               ]
-
               draw.polygon(points, fill=trunk_color)
 
-              # Hojas
-              leaf_color = (17, 7, 25, 240)
-
+              leaf_color = (16, 5, 23, 240)
               for angle in [-65, -40, -20, 5, 25, 45, 70]:
                   rad = math.radians(angle)
-
-                  length = 105
-
+                  length = 92
                   end_x = top_x + int(math.cos(rad) * length)
                   end_y = top_y + int(math.sin(rad) * length * 0.55)
-
                   draw.line(
                       (top_x, top_y, end_x, end_y),
                       fill=leaf_color,
-                      width=7
+                      width=6
                   )
 
-          palm(draw, 70, 700, 280, 1)
-          palm(draw, 1210, 700, 300, -1)
+          palm(draw, 18, 600, 205, 1)
+          palm(draw, 1182, 600, 220, -1)
 
           # ============================================================
           # FUENTES
@@ -208,31 +154,15 @@ jobs:
 
           font_regular = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
           font_bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+          font_condensed = "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf"
 
-          title_font = ImageFont.truetype(
-              font_bold,
-              58
-          )
-
-          leonida_font = ImageFont.truetype(
-              font_bold,
-              31
-          )
-
-          number_font = ImageFont.truetype(
-              font_bold,
-              170
-          )
-
-          days_font = ImageFont.truetype(
-              font_bold,
-              45
-          )
-
-          date_font = ImageFont.truetype(
-              font_bold,
-              25
-          )
+          title_font = ImageFont.truetype(font_bold, 29)
+          leonida_font = ImageFont.truetype(font_condensed, 42)
+          number_font = ImageFont.truetype(font_condensed, 164)
+          days_font = ImageFont.truetype(font_condensed, 48)
+          date_font = ImageFont.truetype(font_condensed, 36)
+          box_font = ImageFont.truetype(font_condensed, 31)
+          state_font = ImageFont.truetype(font_condensed, 31)
 
           # ============================================================
           # TÍTULO
@@ -240,102 +170,110 @@ jobs:
 
           title = "GRAND THEFT AUTO VI"
 
-          # Glow del título
           title_glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
           glow_draw = ImageDraw.Draw(title_glow)
-
           glow_draw.text(
-              (W // 2, 52),
+              (W // 2, 47),
               title,
               font=title_font,
               anchor="ma",
-              fill=(255, 80, 170, 150),
-              stroke_width=3
+              fill=(255, 80, 170, 130)
           )
-
-          title_glow = title_glow.filter(
-              ImageFilter.GaussianBlur(12)
-          )
-
+          title_glow = title_glow.filter(ImageFilter.GaussianBlur(10))
           img = Image.alpha_composite(img, title_glow)
           draw = ImageDraw.Draw(img)
-
           draw.text(
-              (W // 2, 52),
+              (W // 2, 47),
               title,
               font=title_font,
               anchor="ma",
-              fill=(255, 250, 252),
-              stroke_width=2,
-              stroke_fill=(255, 105, 175)
+              fill=(235, 216, 225),
+              stroke_width=1,
+              stroke_fill=(190, 93, 143)
           )
 
           # ============================================================
           # TARJETA CENTRAL
           # ============================================================
 
-          card_left = 150
-          card_top = 175
-          card_right = 1130
-          card_bottom = 590
+          card_left = 200
+          card_top = 85
+          card_right = 1000
+          card_bottom = 484
 
           # Sombra
           shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
           shadow_draw = ImageDraw.Draw(shadow)
-
           shadow_draw.rounded_rectangle(
-              (
-                  card_left + 10,
-                  card_top + 15,
-                  card_right + 10,
-                  card_bottom + 15
-              ),
-              radius=48,
-              fill=(0, 0, 0, 145)
+              (card_left + 10, card_top + 14, card_right + 10, card_bottom + 14),
+              radius=34,
+              fill=(0, 0, 0, 150)
           )
-
-          shadow = shadow.filter(
-              ImageFilter.GaussianBlur(18)
-          )
-
+          shadow = shadow.filter(ImageFilter.GaussianBlur(15))
           img = Image.alpha_composite(img, shadow)
           draw = ImageDraw.Draw(img)
 
-          # Glow exterior
+          # Borde exterior suave
           glow_card = Image.new("RGBA", (W, H), (0, 0, 0, 0))
           glow_card_draw = ImageDraw.Draw(glow_card)
-
           glow_card_draw.rounded_rectangle(
-              (
-                  card_left - 5,
-                  card_top - 5,
-                  card_right + 5,
-                  card_bottom + 5
-              ),
-              radius=50,
-              outline=(255, 72, 170, 150),
-              width=14
+              (card_left - 3, card_top - 3, card_right + 3, card_bottom + 3),
+              radius=38,
+              outline=(255, 92, 166, 110),
+              width=10
           )
-
-          glow_card = glow_card.filter(
-              ImageFilter.GaussianBlur(12)
-          )
-
+          glow_card = glow_card.filter(ImageFilter.GaussianBlur(8))
           img = Image.alpha_composite(img, glow_card)
           draw = ImageDraw.Draw(img)
 
-          # Tarjeta
+          # Placa principal
           draw.rounded_rectangle(
-              (
-                  card_left,
-                  card_top,
-                  card_right,
-                  card_bottom
-              ),
-              radius=45,
-              fill=(249, 244, 228, 255),
-              outline=(255, 105, 180, 255),
+              (card_left, card_top, card_right, card_bottom),
+              radius=34,
+              fill=(249, 247, 239, 255),
+              outline=(255, 255, 255, 255),
               width=8
+          )
+
+          # Borde interior rosa
+          inner = 216
+          draw.rounded_rectangle(
+              (inner, 99, 984, 469),
+              radius=27,
+              outline=(232, 87, 143, 255),
+              width=5
+          )
+
+          # ============================================================
+          # CAJAS NOV / 2026
+          # ============================================================
+
+          draw.rounded_rectangle(
+              (243, 120, 350, 187),
+              radius=9,
+              fill=(238, 235, 225, 255),
+              outline=(160, 157, 149, 255),
+              width=2
+          )
+          draw.text(
+              (296, 153), "NOV",
+              font=box_font,
+              anchor="mm",
+              fill=(22, 20, 24)
+          )
+
+          draw.rounded_rectangle(
+              (868, 120, 956, 187),
+              radius=9,
+              fill=(245, 207, 49, 255),
+              outline=(170, 148, 55, 255),
+              width=2
+          )
+          draw.text(
+              (912, 153), "2026",
+              font=box_font,
+              anchor="mm",
+              fill=(22, 20, 24)
           )
 
           # ============================================================
@@ -343,70 +281,73 @@ jobs:
           # ============================================================
 
           draw.text(
-              (W // 2, 218),
+              (W // 2, 151),
               "LEONIDA",
               font=leonida_font,
-              anchor="ma",
-              fill=(214, 53, 119)
-          )
-
-          # Línea decorativa
-          draw.line(
-              (
-                  W // 2 - 135,
-                  250,
-                  W // 2 + 135,
-                  250
-              ),
-              fill=(230, 82, 140),
-              width=3
+              anchor="mm",
+              fill=(221, 52, 119)
           )
 
           # ============================================================
-          # NÚMERO
+          # NÚMERO + DÍAS
           # ============================================================
 
           number = str(days)
 
-          # Glow del número
           number_glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
           number_draw = ImageDraw.Draw(number_glow)
-
           number_draw.text(
-              (W // 2, 355),
+              (W // 2, 315),
               number,
               font=number_font,
               anchor="mm",
-              fill=(220, 50, 130, 130)
+              fill=(220, 50, 130, 75)
           )
-
-          number_glow = number_glow.filter(
-              ImageFilter.GaussianBlur(14)
-          )
-
+          number_glow = number_glow.filter(ImageFilter.GaussianBlur(11))
           img = Image.alpha_composite(img, number_glow)
           draw = ImageDraw.Draw(img)
 
+          # Número grande negro
           draw.text(
-              (W // 2, 355),
+              (W // 2 - 42, 315),
               number,
               font=number_font,
               anchor="mm",
-              fill=(25, 19, 27),
+              fill=(24, 21, 28),
               stroke_width=2,
-              stroke_fill=(25, 19, 27)
+              stroke_fill=(24, 21, 28)
+          )
+
+          # DÍAS a la derecha del número, como en la referencia
+          number_bbox = draw.textbbox((0, 0), number, font=number_font)
+          number_width = number_bbox[2] - number_bbox[0]
+          days_x = W // 2 - 42 + number_width // 2 + 25
+
+          draw.text(
+              (days_x, 365),
+              "DÍAS",
+              font=days_font,
+              anchor="lm",
+              fill=(24, 21, 28),
+              stroke_width=1,
+              stroke_fill=(24, 21, 28)
           )
 
           # ============================================================
-          # DÍAS
+          # GOODTIME STATE + TORNILLOS
           # ============================================================
 
+          draw.ellipse((342, 426, 361, 445), fill=(205, 201, 191), outline=(174, 170, 160), width=2)
+          draw.ellipse((347, 431, 356, 440), fill=(235, 232, 223))
+          draw.ellipse((839, 426, 858, 445), fill=(205, 201, 191), outline=(174, 170, 160), width=2)
+          draw.ellipse((844, 431, 853, 440), fill=(235, 232, 223))
+
           draw.text(
-              (W // 2, 455),
-              "DÍAS",
-              font=days_font,
+              (W // 2, 438),
+              "GOODTIME STATE",
+              font=state_font,
               anchor="mm",
-              fill=(214, 53, 119)
+              fill=(221, 52, 119)
           )
 
           # ============================================================
@@ -414,12 +355,51 @@ jobs:
           # ============================================================
 
           draw.text(
-              (W // 2, 660),
+              (W // 2, 521),
               "19 DE NOVIEMBRE DE 2026",
               font=date_font,
               anchor="mm",
-              fill=(255, 245, 250, 255)
+              fill=(255, 245, 250, 255),
+              stroke_width=1,
+              stroke_fill=(245, 190, 210, 120)
           )
+
+          # ============================================================
+          # BARRA DE PROGRESO
+          # ============================================================
+
+          bar_left = 200
+          bar_right = 1000
+          bar_y = 560
+          bar_h = 8
+          bar_radius = 5
+
+          draw.rounded_rectangle(
+              (bar_left, bar_y, bar_right, bar_y + bar_h),
+              radius=bar_radius,
+              fill=(130, 72, 112, 210)
+          )
+
+          # Progreso basado en la fecha del lanzamiento.
+          total_seconds = max((release - datetime(2025, 5, 26, 0, 0, 0, tzinfo=TZ)).total_seconds(), 1)
+          elapsed_seconds = max((now - datetime(2025, 5, 26, 0, 0, 0, tzinfo=TZ)).total_seconds(), 0)
+          progress = max(0.0, min(elapsed_seconds / total_seconds, 1.0))
+          progress_right = int(bar_left + (bar_right - bar_left) * progress)
+
+          if progress_right > bar_left:
+              # Segmento amarillo inicial + segmento rosa final
+              yellow_end = min(progress_right, bar_left + int((bar_right - bar_left) * 0.45))
+              draw.rounded_rectangle(
+                  (bar_left, bar_y, yellow_end, bar_y + bar_h),
+                  radius=bar_radius,
+                  fill=(255, 220, 55)
+              )
+              if progress_right > yellow_end:
+                  draw.rounded_rectangle(
+                      (yellow_end, bar_y, progress_right, bar_y + bar_h),
+                      radius=bar_radius,
+                      fill=(238, 71, 132)
+                  )
 
           # ============================================================
           # GUARDAR
