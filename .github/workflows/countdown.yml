@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Generate GTA VI countdown
         run: |
-          pip install pillow requests
+          pip install pillow
 
           python - <<'PY'
           from PIL import Image, ImageDraw, ImageFont
@@ -136,6 +136,8 @@ jobs:
 
           with open("days.txt", "w") as f:
               f.write(str(days))
+
+          print(f"Days remaining: {days}")
           PY
 
       - name: Create or update Discord message
@@ -145,9 +147,21 @@ jobs:
         run: |
           DAYS=$(cat days.txt)
 
-          CONTENT="🌴 **GRAND THEFT AUTO VI**
+          python - <<PY
+          import json
 
-          ⏳ **Faltan ${DAYS} días para GTA VI — CAL FAMILY**"
+          days = "${DAYS}"
+
+          content = (
+              "🌴 **GRAND THEFT AUTO VI**\n\n"
+              f"⏳ **Faltan {days} días para GTA VI — CAL FAMILY**"
+          )
+
+          with open("payload.json", "w") as f:
+              json.dump({"content": content}, f, ensure_ascii=False)
+
+          print(content)
+          PY
 
           if [ "$MESSAGE_ID" = "0" ]; then
 
@@ -155,7 +169,7 @@ jobs:
 
             RESPONSE=$(curl -sS -X POST "${DISCORD_WEBHOOK}?wait=true" \
               -F "file1=@gta6-countdown.png" \
-              --form-string "payload_json={\"content\":\"${CONTENT}\"}")
+              -F "payload_json=<payload.json")
 
             echo "$RESPONSE"
 
@@ -163,12 +177,9 @@ jobs:
 
             echo ""
             echo "========================================"
-            echo "MENSAJE CREADO"
+            echo "MENSAJE CREADO CORRECTAMENTE"
             echo "MESSAGE ID: $NEW_ID"
             echo "========================================"
-            echo ""
-            echo "IMPORTANTE: copia ese ID y ponlo en"
-            echo "DISCORD_MESSAGE_ID en GitHub Secrets."
 
           else
 
@@ -177,9 +188,8 @@ jobs:
             curl -sS -X PATCH \
               "${DISCORD_WEBHOOK}/messages/${MESSAGE_ID}" \
               -F "file1=@gta6-countdown.png" \
-              --form-string "payload_json={\"content\":\"${CONTENT}\"}"
+              -F "payload_json=<payload.json"
 
-            echo ""
             echo "Contador actualizado correctamente."
 
           fi
