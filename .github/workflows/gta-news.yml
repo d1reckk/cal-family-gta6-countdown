@@ -1,49 +1,41 @@
-name: CAL BOT - GTA VI News
-
+name: GTA VI News - Cal Bot V13
 on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
-
 concurrency:
-  group: cal-bot-gta-news
+  group: gta-vi-news-bot
   cancel-in-progress: false
-
 permissions:
   contents: write
-
 jobs:
   news:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-
+        with:
+          fetch-depth: 0
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install feedparser requests beautifulsoup4
-
-      - name: Run Cal Bot
+      - name: Run Cal Bot V13
         env:
           NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python cal_bot.py
-
       - name: Save news history
         if: success()
         run: |
           git config user.name "Cal Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add seen_news.json
-
           if git diff --cached --quiet; then
             echo "No hay cambios en el historial."
           else
