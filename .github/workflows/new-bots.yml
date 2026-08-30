@@ -1,11 +1,10 @@
-```yaml id="v4g0xk"
 name: test
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - run: echo "YAML OK"
-```
