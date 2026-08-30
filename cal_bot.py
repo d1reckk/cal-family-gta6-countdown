@@ -14,12 +14,12 @@ from bs4 import BeautifulSoup
 
 
 # ============================================================
-# CAL BOT V13
+# CAL BOT V14
 # EDITOR DE NOTICIAS DE CAL FAMILY
 # ============================================================
 
 print("=" * 60)
-print("CAL BOT V13")
+print("CAL BOT V14")
 print("EDITOR DE NOTICIAS DE CAL FAMILY")
 print("=" * 60)
 
@@ -46,16 +46,19 @@ RSS_URL = (
     "&ceid=US:en"
 )
 
-# Modelos actuales / respaldo
+# ============================================================
+# MODELOS GEMINI
+# ============================================================
+
 GEMINI_MODELS = [
     "gemini-3.7-flash",
     "gemini-3.6-flash",
-    "gemini-3.5-flash-lite"
+    "gemini-3.5-flash"
 ]
 
 
 # ============================================================
-# VALIDAR SECRETS
+# VALIDACIÓN
 # ============================================================
 
 if not WEBHOOK:
@@ -72,6 +75,7 @@ if not GEMINI_KEY:
 # ============================================================
 
 def normalize_text(text):
+
     if not text:
         return ""
 
@@ -81,14 +85,19 @@ def normalize_text(text):
         "grand theft auto vi": "gta vi",
         "grand theft auto 6": "gta vi",
         "grand theft auto": "gta",
-        "gta 6": "gta vi",
+        "gta 6": "gta vi"
     }
 
     for old, new in replacements.items():
         text = text.replace(old, new)
 
     text = re.sub(r"https?://\S+", "", text)
-    text = re.sub(r"[^a-z0-9áéíóúüñ ]+", " ", text)
+    text = re.sub(
+        r"[^a-z0-9áéíóúüñ ]+",
+        " ",
+        text
+    )
+
     text = re.sub(r"\s+", " ", text)
 
     return text.strip()
@@ -99,6 +108,7 @@ def normalize_text(text):
 # ============================================================
 
 def similarity(a, b):
+
     a = normalize_text(a)
     b = normalize_text(b)
 
@@ -113,10 +123,12 @@ def similarity(a, b):
 # ============================================================
 
 def canonical_url(url):
+
     if not url:
         return ""
 
     try:
+
         parsed = urlparse(url)
 
         query = parse_qs(
@@ -139,16 +151,22 @@ def canonical_url(url):
             if key not in ignored
         }
 
+        new_query = urlencode(
+            clean_query,
+            doseq=True
+        )
+
         return urlunparse((
             parsed.scheme,
             parsed.netloc.lower(),
             parsed.path.rstrip("/"),
             "",
-            urlencode(clean_query, doseq=True),
+            new_query,
             ""
         ))
 
     except Exception:
+
         return url
 
 
@@ -157,6 +175,7 @@ def canonical_url(url):
 # ============================================================
 
 def article_id(title, url):
+
     value = (
         normalize_text(title)
         + "|"
@@ -173,6 +192,7 @@ def article_id(title, url):
 # ============================================================
 
 def clean_html(text):
+
     if not text:
         return ""
 
@@ -227,7 +247,7 @@ history.setdefault("content_hashes", [])
 
 
 # ============================================================
-# BUSCAR RSS
+# RSS
 # ============================================================
 
 print("Buscando noticias nuevas...")
@@ -237,68 +257,12 @@ feed = feedparser.parse(RSS_URL)
 if not feed.entries:
 
     print("No se encontraron noticias.")
+
     raise SystemExit(0)
 
 
 # ============================================================
-# FILTRO LOCAL
-# Evita gastar Gemini en basura obvia
-# ============================================================
-
-BLOCKED_PATTERNS = [
-
-    r"\b80\s*hours?\b",
-    r"\b80\s*horas?\b",
-
-    r"\brumou?r\b",
-    r"\brumores?\b",
-    r"\brumored\b",
-
-    r"\bleak\b",
-    r"\bleaked\b",
-    r"\bfiltraci[oó]n\b",
-    r"\bfiltrado\b",
-    r"\bfiltrada\b",
-
-    r"\bspeculation\b",
-    r"\bspeculaci[oó]n\b",
-    r"\bspeculative\b",
-
-    r"\bmy\s+thoughts\b",
-    r"\bopinion\b",
-    r"\bopini[oó]n\b",
-
-    r"\bwhy\s+i\b",
-    r"\bwhat\s+i\s+think\b",
-    r"\bwhat\s+we\s+think\b",
-
-    r"\bwork\s+blackout\b",
-
-    r"\breaction\b",
-    r"\breacci[oó]n\b",
-
-]
-
-
-def obvious_bad_candidate(title):
-
-    normalized = normalize_text(title)
-
-    for pattern in BLOCKED_PATTERNS:
-
-        if re.search(
-            pattern,
-            normalized,
-            re.IGNORECASE
-        ):
-
-            return True
-
-    return False
-
-
-# ============================================================
-# CANDIDATO
+# BUSCAR CANDIDATO
 # ============================================================
 
 candidate = None
@@ -319,20 +283,6 @@ for entry in feed.entries:
     ).strip()
 
     if not title or not google_url:
-        continue
-
-
-    # --------------------------------------------------------
-    # FILTRO RÁPIDO
-    # --------------------------------------------------------
-
-    if obvious_bad_candidate(title):
-
-        print(
-            "Ignorada por filtro local:",
-            title
-        )
-
         continue
 
 
@@ -407,7 +357,7 @@ for entry in feed.entries:
 
 
     # --------------------------------------------------------
-    # TÍTULO REPETIDO
+    # TÍTULOS REPETIDOS
     # --------------------------------------------------------
 
     duplicate = False
@@ -417,9 +367,10 @@ for entry in feed.entries:
         if similarity(
             title,
             old_title
-        ) >= 0.86:
+        ) >= 0.90:
 
             duplicate = True
+
             break
 
 
@@ -433,7 +384,7 @@ for entry in feed.entries:
 
 
     # --------------------------------------------------------
-    # RSS
+    # CONTENIDO RSS
     # --------------------------------------------------------
 
     summary = clean_html(
@@ -475,7 +426,7 @@ for entry in feed.entries:
 if candidate is None:
 
     print("=" * 60)
-    print("NO HAY NOTICIAS NUEVAS PUBLICABLES.")
+    print("NO HAY NOTICIAS NUEVAS.")
     print("=" * 60)
 
     raise SystemExit(0)
@@ -499,7 +450,6 @@ print("=" * 60)
 # ============================================================
 
 article_text = ""
-
 final_source_url = google_url
 
 
@@ -509,7 +459,7 @@ headers = {
         "(X11; Linux x86_64) "
         "AppleWebKit/537.36 "
         "(KHTML, like Gecko) "
-        "Chrome/124 Safari/537.36"
+        "Chrome/124.0 Safari/537.36"
 }
 
 
@@ -518,7 +468,7 @@ try:
     response = requests.get(
         google_url,
         headers=headers,
-        timeout=25,
+        timeout=30,
         allow_redirects=True
     )
 
@@ -568,7 +518,7 @@ try:
             paragraphs
         )
 
-        article_text = article_text[:18000]
+        article_text = article_text[:20000]
 
 
 except Exception as error:
@@ -581,7 +531,7 @@ except Exception as error:
 
 
 # ============================================================
-# CONTENIDO
+# CONTENIDO FINAL
 # ============================================================
 
 if len(article_text) >= 300:
@@ -622,10 +572,10 @@ if content_hash in history["content_hashes"]:
 
 
 # ============================================================
-# HISTORIAL
+# HISTORIAL PARA GEMINI
 # ============================================================
 
-previous_titles = history["titles"][-60:]
+previous_titles = history["titles"][-80:]
 
 previous_titles_text = "\n".join(
     f"- {old_title}"
@@ -634,80 +584,154 @@ previous_titles_text = "\n".join(
 
 
 # ============================================================
-# PROMPT
+# PROMPT V14
 # ============================================================
 
 prompt = f"""
-Eres CAL BOT V13, editor de noticias de CAL FAMILY.
+Eres CAL BOT, editor automático de noticias de CAL FAMILY.
 
-Tu trabajo es encontrar SOLO noticias que aporten
-información nueva, concreta y verificable sobre GTA VI.
+CAL FAMILY es una comunidad dedicada principalmente a
+Grand Theft Auto VI.
+
+Tu objetivo es encontrar noticias que realmente aporten
+información útil a la comunidad.
+
+PRIORIDAD:
 
 CALIDAD > CANTIDAD.
 
 ============================================================
-DESCARTAR
+REGLA PRINCIPAL
 ============================================================
 
-DESCARTA inmediatamente si es:
+PUBLICA solamente si existe información:
 
-- rumor
-- filtración no verificada
+- nueva
+- concreta
+- relevante
+- suficientemente verificable
+
+No publiques simplemente porque el artículo menciona GTA VI.
+
+============================================================
+EXTENDED LOOK / TRAILERS / GAMEPLAY
+============================================================
+
+ESTA REGLA ES MUY IMPORTANTE.
+
+NO descartes automáticamente un artículo porque hable
+del Extended Look, tráiler, gameplay o material oficial.
+
+Un artículo SOBRE un evento ya conocido puede publicarse
+SI contiene DATOS CONCRETOS que ayuden a documentar lo
+que fue mostrado.
+
+Ejemplos que PUEDEN ser publicables:
+
+- una mecánica concreta mostrada
+- una nueva ubicación identificada
+- un personaje mostrado
+- una misión concreta
+- una actividad
+- una característica de gameplay
+- una interacción específica
+- un vehículo mostrado
+- un detalle del mundo
+- una declaración nueva de Rockstar
+- una explicación concreta de desarrollo
+- información nueva proporcionada por desarrolladores
+- un dato que el artículo documenta claramente y que
+  no aparece en el historial
+
+En esos casos:
+
+PUBLICAR.
+
+Pero si el artículo solamente dice:
+
+"El Extended Look fue increíble."
+
+"El nuevo vídeo muestra mucho contenido."
+
+"GTA VI se ve espectacular."
+
+"Esto es lo que pensamos del tráiler."
+
+o simplemente da una opinión:
+
+DESCARTAR.
+
+============================================================
+ARTÍCULOS QUE DEBEN DESCARTARSE
+============================================================
+
+DESCARTA:
+
+- rumores reciclados
+- filtraciones
+- supuestas filtraciones sin fuente fiable
 - especulación
-- opinión
-- reacción
+- clickbait
+- opiniones
 - análisis sin información nueva
-- artículo que solamente comenta un tráiler existente
-- artículo que solamente comenta el Extended Look
-- artículo que repite una noticia anterior
-- artículo que cambia solamente el medio
-- artículo sobre popularidad general de GTA VI
-- artículo sobre expectativas generales
-- artículo sobre impacto cultural sin datos nuevos
-- información sin fuente verificable
-- una supuesta duración del juego no confirmada oficialmente
+- artículos que solamente reaccionan
+- artículos que repiten una noticia anterior
+- artículos que cambian solamente el titular
+- artículos que no contienen datos concretos
+- artículos cuyo contenido no puede verificarse
+- artículos que solamente hablan del impacto cultural
+- artículos que solamente hablan de popularidad
+- artículos que solamente dicen que GTA VI será enorme
+- artículos que solamente comparan presupuestos
+- artículos que solamente predicen ventas
 
-IMPORTANTE:
+============================================================
+FUENTES SECUNDARIAS
+============================================================
 
-Una fuente secundaria SÍ puede publicarse si aporta
-un dato concreto NUEVO y verificable.
+Una fuente secundaria SÍ puede utilizarse.
 
-No es obligatorio que toda noticia venga directamente
+No es obligatorio que la información venga directamente
 de Rockstar Games.
 
-============================================================
-PUBLICAR
-============================================================
+Sin embargo:
 
-Ejemplos de información que puede ser publicable:
+Si un medio secundario aporta información concreta,
+atribuida claramente a una fuente o basada en material
+oficial verificable:
 
-- anuncio oficial
-- nueva fecha
-- retraso confirmado
-- nuevo tráiler
-- nuevas imágenes oficiales
-- nueva información de personajes
-- nueva información de gameplay
-- nueva información del mapa
-- nueva información técnica
-- declaraciones verificables de Rockstar
-- declaraciones verificables de Take-Two
-- información empresarial concreta
-- información de desarrollo respaldada por una fuente fiable
-- entrevista con información nueva
-- información nueva descubierta por un medio fiable
+PUEDE PUBLICARSE.
+
+Si el medio simplemente repite un rumor:
+
+DESCARTAR.
 
 ============================================================
-REGLA CRÍTICA
+HECHOS VS OPINIONES
 ============================================================
 
-NO conviertas un rumor en hecho.
+Clasifica mentalmente la información como:
 
-NO conviertas una opinión en noticia.
+1. HECHO OFICIAL
+2. DECLARACIÓN DE ROCKSTAR
+3. DECLARACIÓN DE TAKE-TWO
+4. DECLARACIÓN DE DESARROLLADOR
+5. INFORMACIÓN DE MEDIO
+6. OBSERVACIÓN DEL MATERIAL OFICIAL
+7. OPINIÓN
+8. ANÁLISIS
+9. RUMOR
+10. ESPECULACIÓN
 
-NO conviertas una predicción en confirmación.
+Nunca presentes:
 
-NO inventes información.
+OPINIÓN
+
+RUMOR
+
+ESPECULACIÓN
+
+como hecho.
 
 ============================================================
 HISTORIAL
@@ -716,65 +740,105 @@ HISTORIAL
 {previous_titles_text}
 
 ============================================================
-ARTÍCULO
+ARTÍCULO ACTUAL
 ============================================================
 
 TÍTULO:
+
 {title}
 
 FUENTE:
+
 {final_source_url}
 
 CONTENIDO:
+
 {source_content}
+
+============================================================
+PREGUNTA EDITORIAL
+============================================================
+
+Antes de decidir, pregúntate:
+
+"¿Qué información concreta aprendería un miembro
+de CAL FAMILY leyendo esta noticia?"
+
+Si la respuesta es algo concreto:
+
+puede PUBLICARSE.
+
+Si la respuesta es solamente:
+
+"que otro medio habló de GTA VI"
+
+DESCARTAR.
 
 ============================================================
 DECISIÓN
 ============================================================
 
-Responde solamente con JSON válido:
+Selecciona:
+
+PUBLICAR
+
+o
+
+DESCARTAR.
+
+============================================================
+FORMATO
+============================================================
+
+Devuelve exclusivamente JSON válido.
+
+PUBLICAR:
 
 {{
   "decision": "PUBLICAR",
-  "reason": "motivo",
+  "reason": "motivo breve",
   "category": "Noticias",
-  "title": "título en español",
-  "content": "contenido final"
+  "title": "Título en español",
+  "content": "Contenido final"
 }}
 
-o:
+DESCARTAR:
 
 {{
   "decision": "DESCARTAR",
-  "reason": "motivo",
+  "reason": "motivo breve",
   "category": "Noticias",
   "title": "",
   "content": ""
 }}
 
 ============================================================
-SI PUBLICAS
+CONTENIDO SI PUBLICAS
 ============================================================
 
 Español.
 
-500-1100 caracteres aproximadamente.
+500-1200 caracteres aproximadamente.
 
 Profesional.
 
 Natural.
 
-Sin inventar.
+No inventes datos.
 
-Sin enlace dentro del contenido.
+No incluyas el enlace.
 
-Estructura:
+No digas que eres una IA.
+
+No repitas información innecesariamente.
+
+Utiliza esta estructura cuando tenga sentido:
 
 [Introducción]
 
 **El dato clave**
 
-[Dato]
+[Información concreta]
 
 **Por qué importa**
 
@@ -782,13 +846,23 @@ Estructura:
 
 ⚠️ **Contexto**
 
-[Contexto y nivel de confirmación]
+[Explica si procede de material oficial,
+una declaración, un medio secundario, etc.]
 
 ============================================================
-DECISIÓN FINAL
+REGLA FINAL
 ============================================================
 
-Si no estás seguro:
+NO castigues automáticamente una noticia por hablar
+del Extended Look.
+
+Castiga la falta de información nueva.
+
+Si contiene datos concretos nuevos:
+
+PUBLICAR.
+
+Si solamente comenta el evento:
 
 DESCARTAR.
 """
@@ -813,6 +887,7 @@ for model in GEMINI_MODELS:
         model
     )
 
+
     endpoint = (
         "https://generativelanguage.googleapis.com/"
         f"v1beta/models/{model}:generateContent"
@@ -834,7 +909,9 @@ for model in GEMINI_MODELS:
 
         "generationConfig": {
 
-            "maxOutputTokens": 1800,
+            "temperature": 0.15,
+
+            "maxOutputTokens": 2200,
 
             "responseMimeType":
                 "application/json"
@@ -853,19 +930,17 @@ for model in GEMINI_MODELS:
                         "application/json"
                 },
                 json=payload,
-                timeout=90
+                timeout=120
             )
 
-
-            status = gemini_response.status_code
 
             print(
                 "Gemini HTTP:",
-                status
+                gemini_response.status_code
             )
 
 
-            if status == 200:
+            if gemini_response.status_code == 200:
 
                 gemini_result = (
                     gemini_response.json()
@@ -874,20 +949,7 @@ for model in GEMINI_MODELS:
                 break
 
 
-            # Modelo inexistente:
-            # no perder tiempo reintentando.
-            if status == 404:
-
-                print(
-                    "Modelo no disponible. "
-                    "Probando siguiente modelo."
-                )
-
-                break
-
-
-            # Rate limit / servidor ocupado.
-            if status in (
+            if gemini_response.status_code in (
                 429,
                 500,
                 502,
@@ -912,7 +974,7 @@ for model in GEMINI_MODELS:
 
 
             print(
-                gemini_response.text[:2000]
+                gemini_response.text[:3000]
             )
 
             break
@@ -938,13 +1000,14 @@ for model in GEMINI_MODELS:
 
 
 # ============================================================
-# ERROR GEMINI
+# SIN RESPUESTA
 # ============================================================
 
 if gemini_result is None:
 
     print("=" * 60)
-    print("ERROR: NINGÚN MODELO GEMINI RESPONDIÓ.")
+    print("ERROR: GEMINI NO RESPONDIÓ.")
+    print("La noticia NO será publicada.")
     print("La noticia NO será guardada.")
     print("=" * 60)
 
@@ -988,6 +1051,13 @@ try:
         .get("text", "")
         .strip()
     )
+
+
+    if not ai_text:
+
+        raise ValueError(
+            "Gemini devolvió texto vacío."
+        )
 
 
     ai_text = re.sub(
@@ -1052,6 +1122,7 @@ if decision != "PUBLICAR":
     print("=" * 60)
     print("DESCARTADA POR CAL BOT")
     print("=" * 60)
+
     print(reason)
 
     raise SystemExit(0)
@@ -1096,14 +1167,14 @@ if category not in (
 if not ai_title or not ai_content:
 
     print(
-        "DESCARTADA: contenido inválido."
+        "DESCARTADA: contenido vacío."
     )
 
     raise SystemExit(0)
 
 
 # ============================================================
-# SEGURIDAD
+# SEGURIDAD CONTRA TÍTULOS REPETIDOS
 # ============================================================
 
 for old_title in history["titles"]:
@@ -1111,17 +1182,20 @@ for old_title in history["titles"]:
     if similarity(
         ai_title,
         old_title
-    ) >= 0.88:
+    ) >= 0.90:
 
+        print("=" * 60)
         print(
-            "DESCARTADA: título repetido."
+            "DESCARTADA: título demasiado parecido "
+            "a una noticia anterior."
         )
+        print("=" * 60)
 
         raise SystemExit(0)
 
 
 # ============================================================
-# LIMPIAR
+# LIMPIEZA
 # ============================================================
 
 ai_content = ai_content.replace(
@@ -1147,7 +1221,7 @@ date_text = datetime.now(
 
 
 # ============================================================
-# DISCORD
+# MENSAJE DISCORD
 # ============================================================
 
 final_message = (
@@ -1155,26 +1229,32 @@ final_message = (
     f"🧭 **{category}**\n\n"
     f"# {ai_title}\n\n"
     f"{ai_content}\n\n"
-    f"🔗 **Fuente original:** "
-    f"{final_source_url}\n\n"
+    f"🔗 **Fuente original:** {final_source_url}\n\n"
     f"⚠️ **REVISIÓN REQUERIDA**\n"
     f"Este contenido fue preparado por Cal Bot "
     f"como borrador editorial. "
     f"Revisa la información antes de publicarlo "
     f"en #noticias.\n\n"
-    f"-# Cal Bot V13 · {date_text}"
+    f"-# Cal Bot V14 · {date_text}"
 )
 
 
 # ============================================================
-# LIMITE DISCORD
+# LÍMITE DISCORD
 # ============================================================
 
 if len(final_message) > 1950:
 
-    fixed = len(final_message) - len(ai_content)
+    fixed_length = (
+        len(final_message)
+        - len(ai_content)
+    )
 
-    allowed = 1950 - fixed - 10
+    allowed = (
+        1950
+        - fixed_length
+        - 10
+    )
 
     if allowed < 300:
 
@@ -1184,7 +1264,13 @@ if len(final_message) > 1950:
 
         raise SystemExit(0)
 
-    ai_content = ai_content[:allowed].rstrip()
+
+    ai_content = (
+        ai_content[:allowed]
+        .rsplit(" ", 1)[0]
+        .rstrip()
+    )
+
 
     final_message = (
         f"<@&{ROLE_ID}>\n\n"
@@ -1198,12 +1284,12 @@ if len(final_message) > 1950:
         f"como borrador editorial. "
         f"Revisa la información antes de publicarlo "
         f"en #noticias.\n\n"
-        f"-# Cal Bot V13 · {date_text}"
+        f"-# Cal Bot V14 · {date_text}"
     )
 
 
 # ============================================================
-# ENVIAR DISCORD
+# DISCORD
 # ============================================================
 
 print("=" * 60)
@@ -1212,8 +1298,11 @@ print("=" * 60)
 
 
 discord_payload = {
+
     "content": final_message,
+
     "username": "Cal Bot",
+
     "allowed_mentions": {
         "roles": [
             ROLE_ID
@@ -1235,6 +1324,7 @@ except Exception as error:
     print("=" * 60)
     print("ERROR DE CONEXIÓN CON DISCORD")
     print(error)
+    print("La noticia NO será guardada.")
     print("=" * 60)
 
     raise SystemExit(1)
@@ -1250,15 +1340,26 @@ if not discord_response.ok:
 
     print("=" * 60)
     print("ERROR DE DISCORD")
-    print(discord_response.status_code)
-    print(discord_response.text)
+    print(
+        discord_response.text
+    )
+    print("La noticia NO será guardada.")
     print("=" * 60)
 
     raise SystemExit(1)
 
 
 # ============================================================
-# GUARDAR HISTORIAL SOLO DESPUÉS DE DISCORD
+# CONFIRMACIÓN
+# ============================================================
+
+print("=" * 60)
+print("DISCORD CONFIRMÓ EL MENSAJE.")
+print("=" * 60)
+
+
+# ============================================================
+# GUARDAR HISTORIAL
 # ============================================================
 
 history["published"].append(
@@ -1302,6 +1403,6 @@ with open(
 
 
 print("=" * 60)
-print("DISCORD CONFIRMÓ EL MENSAJE.")
 print("NOTICIA PUBLICADA Y GUARDADA.")
+print("CAL BOT V14 FINALIZADO.")
 print("=" * 60)
