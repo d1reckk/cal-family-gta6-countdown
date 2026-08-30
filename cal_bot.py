@@ -339,31 +339,29 @@ def title_should_skip(title):
 
 
 def looks_like_leak_or_cyberleak(title, content):
-    text = normalize_text(
-        f"{title} {content}"
-    )
+    """
+    Filtro local conservador.
+    Solo bloquea titulares inequÃ­vocamente centrados en cyberleaks.
+    La evaluaciÃ³n contextual del contenido la hace Gemini.
+    """
+    title_text = normalize_text(title)
 
-    strong_patterns = [
+    hard_patterns = [
         r"\bcyber ?leak\b",
+        r"\bcyberleek\b",
         r"\bdata breach\b",
         r"\bstolen files?\b",
         r"\bhacked files?\b",
-        r"\bprivate files?\b",
         r"\bstolen source code\b",
         r"\bstolen database\b",
         r"\bcredential(s)? leak\b",
         r"\barchivos robados\b",
-        r"\barchivos privados\b",
-        r"\bfiltracion de datos\b",
         r"\bdatos robados\b",
-        r"\bintrusion\b",
-        r"\bhackeo\b",
-        r"\bbrecha de seguridad\b",
     ]
 
     return any(
-        re.search(pattern, text, flags=re.I)
-        for pattern in strong_patterns
+        re.search(pattern, title_text, flags=re.I)
+        for pattern in hard_patterns
     )
 
 
@@ -577,10 +575,16 @@ def fetch_article(google_url, rss_content):
     except Exception as exc:
         print("Error procesando el artÃ­culo:", exc)
 
+    print("Longitud artÃ­culo extraÃ­do:", len(article_text))
+    print("Longitud RSS disponible:", len(rss_content))
+    print("URL final del artÃ­culo:", final_url)
+
     if len(article_text) >= 300:
+        print("Usando TEXTO DEL ARTÃCULO.")
         return article_text, final_url
 
     if len(rss_content) >= 100:
+        print("Usando EXTRACTO RSS como fallback.")
         return rss_content[:12000], final_url
 
     return "", final_url
@@ -633,159 +637,122 @@ def build_editorial_prompt(
     history,
 ):
     previous = history.get("titles", [])
-
     if not isinstance(previous, list):
         previous = []
-
     previous = previous[-80:]
 
     previous_text = (
-        "\n".join(
-            f"- {item}"
-            for item in previous
-        )
+        "\n".join(f"- {item}" for item in previous)
         or "- Ninguna"
     )
 
     return f"""
-Eres CAL BOT, editor de noticias de CAL FAMILY,
-una comunidad dedicada a GTA VI.
+Eres CAL BOT, editor de noticias de CAL FAMILY, una comunidad dedicada a GTA VI.
 
-OBJETIVO
-Selecciona informaciÃ³n realmente Ãºtil para el canal.
-No publiques por llenar espacio, pero tampoco descartes
-una noticia legÃ­tima solo porque la fuente no sea Rockstar Games.
+MISIÃ“N
+Selecciona la mejor informaciÃ³n periodÃ­stica disponible. No publiques basura,
+pero tampoco exijas una gran revelaciÃ³n para aceptar una noticia legÃ­tima.
 
 CLASIFICACIÃ“N OBLIGATORIA
-Usa EXACTAMENTE una:
-
-- "Noticias": informaciÃ³n factual o hechos verificables.
-- "AnÃ¡lisis": anÃ¡lisis periodÃ­stico que aporta informaciÃ³n,
-  contexto o conclusiones nuevas basadas en material real.
-- "OpiniÃ³n": valoraciÃ³n personal, reacciÃ³n, predicciÃ³n o
-  comentario editorial.
-
-Una opiniÃ³n NO debe convertirse en una noticia factual.
-
-Un anÃ¡lisis puede publicarse si aporta informaciÃ³n sustancial
-nueva y estÃ¡ claramente presentado como anÃ¡lisis.
-
-ESTÃNDAR DE PUBLICACIÃ“N
-PUBLICA solo si hay informaciÃ³n concreta y relevante.
-
-Ejemplos:
-- declaraciÃ³n atribuida;
-- cambio confirmado;
-- fecha;
-- cifra;
-- decisiÃ³n empresarial;
-- informaciÃ³n de desarrollo;
-- casting;
-- tecnologÃ­a;
-- lanzamiento;
-- plataformas;
-- caracterÃ­sticas;
-- producciÃ³n;
-- marketing;
-- clasificaciÃ³n;
-- distribuciÃ³n;
-- otro dato verificable y relevante.
+Usa exactamente una:
+- "Noticias": hechos, declaraciones, cifras, fechas, decisiones o informaciÃ³n
+  verificable presentada como hecho.
+- "AnÃ¡lisis": un medio fiable interpreta material real y aporta contexto,
+  observaciones concretas, comparaciones o conclusiones periodÃ­sticas
+  sustanciales.
+- "OpiniÃ³n": reacciÃ³n personal, review, gusto, predicciÃ³n o especulaciÃ³n.
+  La opiniÃ³n no se publica automÃ¡ticamente.
 
 FUENTES
-- Una fuente secundaria fiable puede ser suficiente.
-- Una declaraciÃ³n de un desarrollador, actor, ejecutivo u otra
-  persona identificable puede ser noticia aunque no sea un
-  comunicado de Rockstar.
-- Un informe periodÃ­stico puede publicarse si explica claramente
-  de dÃ³nde sale el dato.
-- NO exijas una fuente oficial cuando existe evidencia
-  periodÃ­stica sÃ³lida.
+NO necesitas una fuente oficial de Rockstar.
+Una fuente secundaria fiable puede ser suficiente si identifica claramente
+el dato, la declaraciÃ³n, la evidencia o el contexto.
+Una declaraciÃ³n de un desarrollador, actor, ejecutivo u otra persona
+identificable puede ser noticia aunque Rockstar no la haya publicado.
+No confundas "no es Rockstar" con "no es fiable".
+
+EXTENDED LOOK / TRÃILER / MATERIAL PROMOCIONAL
+NO lo descartes automÃ¡ticamente.
+- Si solo dice que el material es impresionante o enumera escenas, es opiniÃ³n
+  o contenido superficial y debe descartarse.
+- Si un medio fiable analiza el material y aporta detalles concretos,
+  contexto verificable, observaciones relevantes o conclusiones periodÃ­sticas
+  sustanciales, puede publicarse como "AnÃ¡lisis".
+- Si el material oficial contiene un dato nuevo verificable, puede ser
+  "Noticias".
+- Nunca inventes novedades a partir de imÃ¡genes.
 
 LEAKS / CYBERLEAKS
-DESCARTA si la informaciÃ³n depende de material obtenido mediante:
-- hackeo;
-- intrusiÃ³n;
-- acceso no autorizado;
-- robo de archivos;
-- credenciales;
-- bases de datos robadas;
-- cÃ³digo fuente robado;
-- archivos privados;
-- cyberleaks.
-
-No conviertas un leak en noticia solo porque varios medios
-lo reproduzcan.
-
-La mera palabra "leak" en un contexto histÃ³rico no basta para
-descartar. EvalÃºa de quÃ© depende realmente la afirmaciÃ³n principal.
+DESCARTA si la afirmaciÃ³n principal DEPENDE de material obtenido mediante
+hackeo, intrusiÃ³n, acceso no autorizado, robo de archivos, credenciales,
+bases de datos robadas, cÃ³digo fuente robado o cyberleaks.
+NO descartes un artÃ­culo legÃ­timo solo porque mencione, recuerde o analice
+leaks histÃ³ricos. EvalÃºa de quÃ© depende la afirmaciÃ³n principal.
 
 DUPLICADOS
-Compara el HECHO CENTRAL con el historial, no solo los tÃ­tulos.
+Compara el hecho central, no solo el tÃ­tulo.
+Si el segundo artÃ­culo aporta un dato sustancialmente nuevo, puede ser vÃ¡lido.
+Si repite el mismo anuncio sin novedad, descÃ¡rtalo.
 
-Dos artÃ­culos distintos que cubren el mismo anuncio o hecho son
-la misma noticia salvo que el segundo aporte un dato
-sustancialmente nuevo.
+ESTÃNDAR DE PUBLICACIÃ“N
+Acepta una candidata cuando ofrece al menos una de estas cosas:
+- declaraciÃ³n atribuida a una persona identificable;
+- fecha o cambio confirmado;
+- cifra o dato concreto;
+- informaciÃ³n de desarrollo o producciÃ³n;
+- plataformas, lanzamiento o distribuciÃ³n;
+- casting;
+- tecnologÃ­a;
+- caracterÃ­sticas del juego;
+- marketing;
+- contexto verificable;
+- anÃ¡lisis periodÃ­stico sustancial basado en material real.
 
-EXTENDED LOOK / TRÃILERS
-NO descartes automÃ¡ticamente un artÃ­culo por tratar sobre un
-Extended Look, trÃ¡iler o material promocional.
+IMPORTANTE
+NO exijas que el artÃ­culo revele algo jamÃ¡s mencionado por ningÃºn otro medio.
+La novedad puede estar en el dato, la declaraciÃ³n, el contexto o el anÃ¡lisis.
 
-- Si solo enumera escenas o detalles ya visibles, DESCARTA.
-- Si un medio fiable analiza ese material y aporta informaciÃ³n
-  nueva, contexto verificable o una conclusiÃ³n periodÃ­stica
-  sustancial, puede publicarse como "AnÃ¡lisis".
-- No inventes novedades a partir de imÃ¡genes o escenas.
+No confundas un RSS breve con un artÃ­culo inÃºtil: el contenido suministrado
+puede ser un extracto. Si el extracto contiene una afirmaciÃ³n concreta y
+atribuida a una fuente identificable, puede ser publicable.
+Si no existe informaciÃ³n suficiente para redactar sin inventar, descarta.
 
-DESCARTA cuando:
-- el contenido principal sea rumor, especulaciÃ³n o predicciÃ³n
-  sin respaldo suficiente;
-- sea una opiniÃ³n/reacciÃ³n/review sin informaciÃ³n nueva;
-- sea SEO/FAQ/recopilaciÃ³n que solo repite lo conocido;
-- el titular prometa algo que el artÃ­culo no demuestra;
-- la informaciÃ³n sea demasiado ambigua para comprobarla;
-- el hecho central ya estÃ© cubierto por el historial y no exista
-  novedad sustancial;
-- sea un leak/cyberleak segÃºn las reglas anteriores.
+DESCARTA:
+- rumor/especulaciÃ³n sin respaldo;
+- opiniÃ³n o reacciÃ³n pura;
+- SEO/FAQ/recopilaciÃ³n que solo repite lo conocido;
+- clickbait sin sustancia;
+- cyberleak cuando la afirmaciÃ³n depende del material ilÃ­cito;
+- duplicado sin novedad sustancial.
 
 REDACCIÃ“N SI PUBLICAR
 - EspaÃ±ol natural.
-- TÃ­tulo claro y preciso.
-- No uses clickbait engaÃ±oso.
 - 550-950 caracteres aproximadamente.
 - Explica primero quÃ© ocurriÃ³ y despuÃ©s por quÃ© importa.
-- Atribuye declaraciones y reportes:
-  "X dijo...", "segÃºn X...", "el medio informa...".
+- Atribuye: "X dijo...", "segÃºn X...", "el medio informa...".
 - No inventes nombres, cifras, fechas, citas ni contexto.
+- Si category es "AnÃ¡lisis", deja claro que es anÃ¡lisis.
+- No conviertas una posibilidad en un hecho.
 - No pongas la URL dentro de "content".
-- Si category es "AnÃ¡lisis", deja claro que es anÃ¡lisis y no
-  un anuncio oficial.
-- No afirmes como hecho lo que el artÃ­culo presenta como posibilidad.
 
 PUNTUACIÃ“N
-Asigna "score" de 0 a 100.
+90-100 = excelente.
+80-89 = muy buena.
+75-79 = vÃ¡lida y publicable.
+60-74 = interesante pero insuficiente.
+0-59 = no publicable.
 
-90-100:
-Muy sÃ³lida, nueva y relevante.
+Una noticia factual bien respaldada debe puntuar por encima de una opiniÃ³n.
+Un anÃ¡lisis sustancial puede superar a una noticia menor.
 
-75-89:
-Buena candidata, con evidencia y novedad suficientes.
-
-60-74:
-Interesante pero con limitaciones.
-
-0-59:
-No alcanza el estÃ¡ndar.
-
-Una opiniÃ³n no debe recibir una puntuaciÃ³n alta solo por ser
-interesante.
+DECISIÃ“N
+PUBLICAR solo si score >= 75 y category no es "OpiniÃ³n".
+Si es anÃ¡lisis, usa "AnÃ¡lisis"; no lo fuerces a "Noticias".
 
 RESPUESTA
-Devuelve ÃšNICAMENTE JSON vÃ¡lido.
-NO uses Markdown.
-NO escribas texto fuera del JSON.
+Devuelve ÃšNICAMENTE JSON vÃ¡lido, sin Markdown ni texto fuera del JSON.
 
-Formato exacto:
-
+Formato:
 {{
   "decision": "PUBLICAR" o "DESCARTAR",
   "reason": "motivo breve",
@@ -795,9 +762,7 @@ Formato exacto:
   "content": "texto final"
 }}
 
-Si DESCARTAR:
-- "content" debe ser "";
-- "score" debe reflejar por quÃ© no alcanza el estÃ¡ndar.
+Si DESCARTAR, content debe ser "".
 
 HISTORIAL DE PUBLICACIONES:
 {previous_text}
@@ -806,7 +771,7 @@ ARTÃCULO CANDIDATO:
 TÃTULO: {title}
 FUENTE: {source_url}
 
-CONTENIDO:
+CONTENIDO DISPONIBLE:
 {source_content}
 """
 
@@ -1554,9 +1519,15 @@ def main():
         )
 
         try:
+            editorial_source = (
+                f"{final_source_url}\n"
+                f"FUENTE RSS DETECTADA: "
+                f"{candidate.get('feed_source', 'RSS desconocido')}"
+            )
+
             raw_result = ask_gemini(
                 candidate["title"],
-                final_source_url,
+                editorial_source,
                 source_content,
                 history,
             )
@@ -1590,8 +1561,10 @@ def main():
             continue
 
         if result["decision"] != "PUBLICAR":
+            print("DESCARTADA POR CAL BOT")
             print(
-                "DESCARTADA POR CAL BOT"
+                f"CategorÃ­a: {result.get('category', 'Noticias')} | "
+                f"PuntuaciÃ³n: {result.get('score', 0):.1f}/100"
             )
 
             print(
@@ -1667,7 +1640,7 @@ def main():
         evaluated_results.append({
             "candidate": candidate,
             "source_hash": source_hash,
-            "source_url": final_source_url,
+            "source_url": final_source_url.split("\n", 1)[0],
             "title": ai_title,
             "content": ai_content,
             "category": category,
