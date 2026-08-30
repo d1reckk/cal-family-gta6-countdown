@@ -18,8 +18,6 @@ jobs:
           from PIL import Image, ImageDraw, ImageFont
           from datetime import datetime
           from zoneinfo import ZoneInfo
-          import requests
-          import os
 
           TZ = ZoneInfo("America/New_York")
           release = datetime(2026, 11, 19, 0, 0, 0, tzinfo=TZ)
@@ -136,19 +134,33 @@ jobs:
 
           img.save("gta6-countdown.png")
 
-          print(f"{days} days remaining")
-
-          # Guardar los días para el siguiente paso
           with open("days.txt", "w") as f:
               f.write(str(days))
           PY
 
-      - name: Send image to Discord
+      - name: Update Discord countdown
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          MESSAGE_ID: ${{ secrets.DISCORD_MESSAGE_ID }}
         run: |
           DAYS=$(cat days.txt)
 
-          curl -X POST "$DISCORD_WEBHOOK" \
-            -F "file1=@gta6-countdown.png" \
-            -F "payload_json={\"content\":\"🌴 **GRAND THEFT AUTO VI**\\n\\n⏳ **Faltan ${DAYS} días para GTA VI — CAL FAMILY**\"}"
+          if [ "$MESSAGE_ID" = "0" ]; then
+
+            RESPONSE=$(curl -s -X POST "$DISCORD_WEBHOOK" \
+              -F "file1=@gta6-countdown.png" \
+              -F "payload_json={\"content\":\"🌴 **GRAND THEFT AUTO VI**\\n\\n⏳ **Faltan ${DAYS} días para GTA VI — CAL FAMILY**\"}")
+
+            echo "$RESPONSE"
+
+            NEW_ID=$(echo "$RESPONSE" | python -c "import sys,json; print(json.load(sys.stdin).get('id',''))")
+
+            echo "Nuevo mensaje: $NEW_ID"
+
+          else
+
+            curl -s -X PATCH "$DISCORD_WEBHOOK/messages/$MESSAGE_ID" \
+              -F "file1=@gta6-countdown.png" \
+              -F "payload_json={\"content\":\"🌴 **GRAND THEFT AUTO VI**\\n\\n⏳ **Faltan ${DAYS} días para GTA VI — CAL FAMILY**\"}"
+
+          fi
