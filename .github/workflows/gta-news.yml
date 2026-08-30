@@ -5,40 +5,69 @@ on:
     - cron: "*/30 * * * *"
   workflow_dispatch:
 
+# ============================================================
+# EVITAR EJECUCIONES SIMULTÁNEAS
+# ============================================================
+
+concurrency:
+  group: gta-vi-news
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
 jobs:
+
   news:
+
     runs-on: ubuntu-latest
 
     steps:
+
+      # ============================================================
+      # CHECKOUT
+      # ============================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # ============================================================
+      # INSTALAR DEPENDENCIAS
+      # ============================================================
 
       - name: Install dependencies
         run: |
           pip install feedparser requests beautifulsoup4
 
+      # ============================================================
+      # BUSCAR Y GENERAR NOTICIA
+      # ============================================================
+
       - name: Find and analyze GTA VI news
         env:
           NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
         run: |
+
           python - <<'PY'
+
           import feedparser
           import requests
           import os
           import json
           import hashlib
+
           from bs4 import BeautifulSoup
           from datetime import datetime, timezone
+
 
           # ============================================================
           # CONFIGURACIÓN
           # ============================================================
 
           WEBHOOK = os.environ["NEWS_DRAFT_WEBHOOK"]
+
           GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 
           MODEL = "gemini-3.5-flash-lite"
@@ -58,37 +87,87 @@ jobs:
 
           HISTORY_FILE = "seen_news.json"
 
+          ROLE_ID = "1504921814759903343"
+
+
           # ============================================================
-          # HISTORIAL
+          # VALIDAR SECRETS
+          # ============================================================
+
+          if not WEBHOOK:
+
+              print("ERROR: NEWS_DRAFT_WEBHOOK está vacío.")
+
+              exit(1)
+
+
+          if not GEMINI_KEY:
+
+              print("ERROR: GEMINI_API_KEY está vacío.")
+
+              exit(1)
+
+
+          # ============================================================
+          # CARGAR HISTORIAL
           # ============================================================
 
           if os.path.exists(HISTORY_FILE):
 
-              with open(
-                  HISTORY_FILE,
-                  "r",
-                  encoding="utf-8"
-              ) as f:
-                  seen = json.load(f)
+              try:
+
+                  with open(
+                      HISTORY_FILE,
+                      "r",
+                      encoding="utf-8"
+                  ) as f:
+
+                      seen = json.load(f)
+
+                      if not isinstance(seen, list):
+                          seen = []
+
+              except Exception:
+
+                  print(
+                      "El historial no pudo ser leído. "
+                      "Se creará uno nuevo."
+                  )
+
+                  seen = []
 
           else:
 
               seen = []
 
+
           # ============================================================
-          # BUSCAR NOTICIAS
+          # BUSCAR RSS
           # ============================================================
 
-          print("Buscando noticias nuevas de GTA VI...")
+          print("========================================")
+
+          print("BUSCANDO NOTICIAS NUEVAS DE GTA VI")
+
+          print("========================================")
+
 
           feed = feedparser.parse(RSS_URL)
+
 
           if not feed.entries:
 
               print("No se encontraron noticias.")
+
               exit(0)
 
+
+          # ============================================================
+          # ENCONTRAR UNA SOLA NOTICIA NUEVA
+          # ============================================================
+
           article = None
+
 
           for entry in feed.entries:
 
@@ -102,37 +181,60 @@ jobs:
                   ""
               ).strip()
 
+
               if not title or not link:
+
                   continue
+
 
               news_id = hashlib.sha256(
                   link.encode("utf-8")
               ).hexdigest()
 
-              if news_id not in seen:
 
-                  article = {
-                      "id": news_id,
-                      "title": title,
-                      "link": link
-                  }
+              if news_id in seen:
 
-                  break
+                  continue
+
+
+              article = {
+                  "id": news_id,
+                  "title": title,
+                  "link": link
+              }
+
+
+              break
+
+
+          # ============================================================
+          # NO HAY NOTICIAS NUEVAS
+          # ============================================================
 
           if article is None:
 
               print("No hay noticias nuevas.")
+
               exit(0)
 
+
           title = article["title"]
+
           link = article["link"]
+
           news_id = article["id"]
 
+
           print("========================================")
+
           print("NUEVA NOTICIA")
+
           print(title)
+
           print(link)
+
           print("========================================")
+
 
           # ============================================================
           # OBTENER ARTÍCULO
@@ -140,73 +242,106 @@ jobs:
 
           article_text = ""
 
+
           try:
 
               headers = {
+
                   "User-Agent": (
-                      "Mozilla/5.0 (X11; Linux x86_64) "
+                      "Mozilla/5.0 "
+                      "(Windows NT 10.0; Win64; x64) "
                       "AppleWebKit/537.36 "
                       "(KHTML, like Gecko) "
                       "Chrome/120 Safari/537.36"
                   )
+
               }
 
+
               page = requests.get(
+
                   link,
+
                   headers=headers,
+
                   timeout=20,
+
                   allow_redirects=True
+
               )
+
 
               print(
                   f"Estado de la página: {page.status_code}"
               )
 
+
               if page.ok:
 
                   soup = BeautifulSoup(
+
                       page.text,
+
                       "html.parser"
+
                   )
+
 
                   for element in soup(
                       [
                           "script",
                           "style",
                           "noscript",
-                          "svg"
+                          "svg",
+                          "nav",
+                          "footer"
                       ]
                   ):
 
                       element.decompose()
 
+
                   paragraphs = []
+
 
                   for paragraph in soup.find_all("p"):
 
                       text = paragraph.get_text(
+
                           " ",
+
                           strip=True
+
                       )
+
 
                       if len(text) >= 50:
 
                           paragraphs.append(text)
 
+
                   article_text = "\n".join(
                       paragraphs
                   )
 
+
+                  # Evitar enviar contenido gigantesco
                   article_text = article_text[:12000]
+
 
           except Exception as error:
 
               print(
                   "No se pudo obtener directamente "
-                  "el artículo:"
+                  "el artículo."
               )
 
               print(error)
+
+
+          # ============================================================
+          # CONTENIDO PARA GEMINI
+          # ============================================================
 
           if article_text:
 
@@ -215,28 +350,31 @@ jobs:
           else:
 
               source_content = (
+
                   "No fue posible obtener el texto completo "
                   "del artículo. Utiliza únicamente el título "
                   "y la información disponible."
               )
+
 
           # ============================================================
           # PROMPT
           # ============================================================
 
           prompt = f"""
+
           Eres el editor de noticias de CAL FAMILY,
           una comunidad dedicada a Grand Theft Auto VI.
 
-          Tu trabajo es convertir una noticia en un borrador
-          profesional para Discord.
+          Tu trabajo es preparar un borrador profesional
+          para el canal de noticias de Discord.
 
           IMPORTANTE:
 
           Utiliza únicamente la información proporcionada
           en el título y contenido disponible.
 
-          Nunca inventes:
+          NO inventes:
 
           - declaraciones de Rockstar Games
           - fechas
@@ -245,65 +383,81 @@ jobs:
           - nombres
           - rumores
           - fuentes
+          - acontecimientos
           - información que no aparezca en el material
 
-          Si algo es opinión, análisis, rumor o especulación,
-          debes indicarlo claramente.
+          Si la información es una opinión, análisis,
+          rumor o especulación, debes decirlo claramente.
 
           ============================================================
-          INFORMACIÓN
+          INFORMACIÓN ORIGINAL
           ============================================================
 
           TÍTULO:
+
           {title}
 
+
           ENLACE:
+
           {link}
 
-          CONTENIDO:
+
+          CONTENIDO DISPONIBLE:
+
           {source_content}
 
+
           ============================================================
-          FORMATO
+          FORMATO OBLIGATORIO
           ============================================================
 
-          Comienza exactamente con:
+          Comienza exactamente con una de estas dos opciones:
 
           🧭 **Noticias**
 
-          o:
+          o
 
           🧭 **Análisis**
 
-          Utiliza "Análisis" cuando el artículo sea principalmente
+
+          Usa "Análisis" si el artículo es principalmente
           opinión, interpretación o análisis.
 
-          Utiliza "Noticias" cuando presente información factual.
+          Usa "Noticias" si presenta información factual.
 
-          Después escribe:
+
+          Después:
 
           # [Título atractivo en español]
 
+
           [Introducción clara de 1-2 párrafos.]
+
 
           **El dato que lo pone en perspectiva**
 
           [Contexto relevante.]
 
+
           **La señal que más dice**
 
-          [El detalle más interesante.]
+          [Explica el detalle más interesante.]
+
 
           **Por qué importa**
 
-          [Explica por qué la información es relevante para GTA VI.]
+          [Explica por qué esta información es relevante
+          para GTA VI.]
 
-          Si corresponde, añade:
+
+          Si corresponde:
 
           ⚠️ **Esto no es un anuncio oficial ni una filtración.**
 
-          [Explica brevemente qué parte es análisis,
-          opinión, rumor o especulación.]
+          [Explica claramente qué parte corresponde
+          a análisis, opinión, rumor o especulación.]
+
 
           ============================================================
           ESTILO
@@ -318,79 +472,121 @@ jobs:
           - No inventes información.
           - No uses demasiados emojis.
           - Usa negritas para datos importantes.
-          - No pongas enlaces dentro del artículo.
+          - No coloques enlaces dentro del artículo.
           - No menciones que eres una IA.
           - No escribas explicaciones fuera del formato.
           - El resultado debe estar listo para Discord.
 
+
           Genera únicamente el texto final del borrador.
+
           """
 
+
           # ============================================================
-          # GEMINI 3.5 FLASH-LITE
+          # GEMINI
           # ============================================================
 
-          print("Enviando noticia a Gemini 3.5 Flash-Lite...")
+          print("========================================")
+
+          print("ENVIANDO NOTICIA A GEMINI 3.5 FLASH-LITE")
+
+          print("========================================")
+
 
           payload = {
+
               "contents": [
+
                   {
+
                       "parts": [
+
                           {
+
                               "text": prompt
+
                           }
+
                       ]
+
                   }
+
               ],
+
               "generationConfig": {
+
                   "temperature": 0.4,
+
                   "maxOutputTokens": 1400
+
               }
+
           }
 
+
           response = requests.post(
+
               GEMINI_URL,
+
               params={
                   "key": GEMINI_KEY
               },
+
               headers={
-                  "Content-Type": "application/json"
+
+                  "Content-Type":
+                      "application/json"
+
               },
+
               json=payload,
+
               timeout=90
+
           )
+
 
           if not response.ok:
 
               print("========================================")
+
               print("ERROR DE GEMINI")
-              print(f"HTTP {response.status_code}")
+
+              print(
+                  f"HTTP {response.status_code}"
+              )
+
               print(response.text)
+
               print("========================================")
 
               exit(1)
 
+
           data = response.json()
 
+
           # ============================================================
-          # EXTRAER RESPUESTA DE GEMINI
+          # EXTRAER TEXTO
           # ============================================================
 
           try:
 
               ai_text = (
+
                   data["candidates"][0]
                   ["content"]
                   ["parts"][0]
                   ["text"]
                   .strip()
+
               )
 
           except Exception:
 
               print(
-                  "Gemini respondió, pero no se pudo "
-                  "extraer el texto."
+                  "No se pudo extraer la respuesta de Gemini."
               )
 
               print(
@@ -403,6 +599,7 @@ jobs:
 
               exit(1)
 
+
           if not ai_text:
 
               print(
@@ -411,11 +608,44 @@ jobs:
 
               exit(1)
 
-          print("========================================")
-          print("BORRADOR GENERADO")
-          print("========================================")
-          print(ai_text)
-          print("========================================")
+
+          # ============================================================
+          # MARCAR NOTICIA COMO VISTA ANTES DE DISCORD
+          # ============================================================
+
+          if news_id not in seen:
+
+              seen.append(news_id)
+
+
+          # Mantener últimas 500 noticias
+
+          seen = seen[-500:]
+
+
+          with open(
+
+              HISTORY_FILE,
+
+              "w",
+
+              encoding="utf-8"
+
+          ) as f:
+
+              json.dump(
+
+                  seen,
+
+                  f,
+
+                  indent=2
+
+              )
+
+
+          print("Noticia marcada como procesada.")
+
 
           # ============================================================
           # FECHA
@@ -425,98 +655,127 @@ jobs:
               timezone.utc
           ).strftime("%d/%m/%Y")
 
+
           # ============================================================
           # MENSAJE FINAL
           # ============================================================
 
           final_message = (
-              "<@&1504921814759903343>\n\n"
+
+              f"<@&{ROLE_ID}>\n\n"
+
               + ai_text
+
               + "\n\n"
-              + f"🔗 **Fuente original:** {link}\n\n"
+
+              + f"🔗 **Fuente original:** {link}"
+
+              + "\n\n"
+
               + "⚠️ **REVISIÓN REQUERIDA**\n"
+
               + "Este contenido es un borrador. "
               + "Revisa la información antes de publicarlo "
-              + "en #noticias.\n\n"
+              + "en #noticias."
+
+              + "\n\n"
+
               + f"-# Cal Bot · {today}"
+
           )
+
 
           # ============================================================
           # DISCORD
           # ============================================================
 
+          print("========================================")
+
+          print("ENVIANDO BORRADOR A DISCORD")
+
+          print("========================================")
+
+
           discord_payload = {
+
               "content": final_message,
+
               "username": "Cal Bot",
+
               "allowed_mentions": {
+
                   "roles": [
-                      "1504921814759903343"
+
+                      ROLE_ID
+
                   ]
+
               }
+
           }
 
+
           discord_response = requests.post(
+
               WEBHOOK,
+
               json=discord_payload,
+
               timeout=30
+
           )
+
 
           if not discord_response.ok:
 
               print("========================================")
+
               print("ERROR DE DISCORD")
-              print(f"HTTP {discord_response.status_code}")
+
+              print(
+                  f"HTTP {discord_response.status_code}"
+              )
+
               print(discord_response.text)
+
               print("========================================")
 
               exit(1)
 
-          print(
-              "========================================"
-          )
 
-          print(
-              "BORRADOR ENVIADO A DISCORD"
-          )
+          print("========================================")
 
-          print(
-              "========================================"
-          )
+          print("BORRADOR ENVIADO CORRECTAMENTE")
 
-          # ============================================================
-          # GUARDAR HISTORIAL
-          # ============================================================
+          print("========================================")
 
-          seen.append(news_id)
-
-          seen = seen[-500:]
-
-          with open(
-              HISTORY_FILE,
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              json.dump(
-                  seen,
-                  f,
-                  indent=2
-              )
-
-          print("Historial actualizado.")
 
           PY
 
+
+      # ============================================================
+      # GUARDAR HISTORIAL EN GITHUB
+      # ============================================================
+
       - name: Save news history
         run: |
+
           git config user.name "Cal Bot"
+
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
 
           git add seen_news.json
 
+
           if git diff --cached --quiet; then
+
             echo "No hay cambios en el historial."
+
           else
+
             git commit -m "Update GTA VI news history"
+
             git push
+
           fi
