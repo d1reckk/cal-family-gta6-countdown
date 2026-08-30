@@ -18,11 +18,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install feedparser requests
+          pip install feedparser requests beautifulsoup4
 
-      - name: Check for new GTA VI news
+      - name: Find and analyze GTA VI news
         env:
           NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python - <<'PY'
           import feedparser
@@ -30,8 +31,11 @@ jobs:
           import os
           import json
           import hashlib
+          from bs4 import BeautifulSoup
+          from datetime import datetime, timezone
 
           WEBHOOK = os.environ["NEWS_DRAFT_WEBHOOK"]
+          OPENAI_KEY = os.environ["OPENAI_API_KEY"]
 
           RSS_URL = (
               "https://news.google.com/rss/"
@@ -44,23 +48,17 @@ jobs:
           HISTORY_FILE = "seen_news.json"
 
           # ============================================================
-          # CARGAR HISTORIAL
+          # HISTORIAL
           # ============================================================
 
           if os.path.exists(HISTORY_FILE):
-
-              with open(
-                  HISTORY_FILE,
-                  "r",
-                  encoding="utf-8"
-              ) as f:
+              with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                   seen = json.load(f)
-
           else:
               seen = []
 
           # ============================================================
-          # OBTENER NOTICIAS
+          # RSS
           # ============================================================
 
           feed = feedparser.parse(RSS_URL)
@@ -69,23 +67,12 @@ jobs:
               print("No se encontraron noticias.")
               exit(0)
 
-          # ============================================================
-          # BUSCAR SOLO LA PRIMERA NOTICIA NUEVA
-          # ============================================================
-
-          new_article = None
+          article = None
 
           for entry in feed.entries:
 
-              title = entry.get(
-                  "title",
-                  ""
-              ).strip()
-
-              link = entry.get(
-                  "link",
-                  ""
-              ).strip()
+              title = entry.get("title", "").strip()
+              link = entry.get("link", "").strip()
 
               if not title or not link:
                   continue
@@ -96,7 +83,7 @@ jobs:
 
               if news_id not in seen:
 
-                  new_article = {
+                  article = {
                       "id": news_id,
                       "title": title,
                       "link": link
@@ -104,47 +91,280 @@ jobs:
 
                   break
 
-          # ============================================================
-          # SI NO HAY NADA NUEVO
-          # ============================================================
-
-          if new_article is None:
-
-              print(
-                  "No hay noticias nuevas."
-              )
-
+          if article is None:
+              print("No hay noticias nuevas.")
               exit(0)
 
+          title = article["title"]
+          link = article["link"]
+          news_id = article["id"]
+
+          print("========================================")
+          print("NUEVA NOTICIA")
+          print(title)
+          print(link)
+          print("========================================")
+
           # ============================================================
-          # DATOS
+          # INTENTAR OBTENER EL ARTÍCULO
           # ============================================================
 
-          title = new_article["title"]
-          link = new_article["link"]
-          news_id = new_article["id"]
+          article_text = ""
+
+          try:
+
+              headers = {
+                  "User-Agent": (
+                      "Mozilla/5.0 (X11; Linux x86_64) "
+                      "AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) "
+                      "Chrome/120 Safari/537.36"
+                  )
+              }
+
+              page = requests.get(
+                  link,
+                  headers=headers,
+                  timeout=20
+              )
+
+              if page.ok:
+
+                  soup = BeautifulSoup(
+                      page.text,
+                      "html.parser"
+                  )
+
+                  for element in soup(
+                      ["script", "style", "noscript"]
+                  ):
+                      element.decompose()
+
+                  paragraphs = []
+
+                  for p in soup.find_all("p"):
+
+                      text = p.get_text(
+                          " ",
+                          strip=True
+                      )
+
+                      if len(text) > 40:
+                          paragraphs.append(text)
+
+                  article_text = "\n".join(
+                      paragraphs
+                  )
+
+                  article_text = article_text[:12000]
+
+          except Exception as error:
+
+              print(
+                  "No se pudo obtener directamente "
+                  "el artículo:"
+              )
+
+              print(error)
 
           # ============================================================
-          # CREAR BORRADOR
+          # CONTENIDO PARA LA IA
           # ============================================================
 
-          content = (
-              "<@&1504921814759903343>\n\n"
-              "🧭 **Noticias**\n\n"
-              f"# {title}\n\n"
-              "**Resumen**\n"
-              "Nueva información relacionada con "
-              "Grand Theft Auto VI.\n\n"
-              "**Fuente original**\n"
-              f"{link}\n\n"
-              "⚠️ **REVISIÓN REQUERIDA**\n"
-              "Este mensaje es un borrador. "
-              "Revisa la información antes de publicarla "
-              "en #noticias."
+          if article_text:
+
+              source_content = article_text
+
+          else:
+
+              source_content = (
+                  "No fue posible obtener el texto completo "
+                  "del artículo. Utiliza únicamente el título "
+                  "y la información disponible."
+              )
+
+          # ============================================================
+          # PROMPT
+          # ============================================================
+
+          prompt = f"""
+          Eres el editor de noticias de CAL FAMILY,
+          una comunidad dedicada a Grand Theft Auto VI.
+
+          Tu trabajo es convertir una noticia en un borrador
+          profesional para Discord.
+
+          IMPORTANTE:
+
+          Solo puedes afirmar información que aparezca
+          en el material proporcionado.
+
+          Nunca inventes:
+          - declaraciones
+          - fechas
+          - cifras
+          - características
+          - fuentes
+          - rumores
+          - información de Rockstar Games
+
+          Si algo es opinión, análisis, rumor o especulación,
+          debes decirlo claramente.
+
+          ============================================================
+          INFORMACIÓN
+          ============================================================
+
+          TÍTULO:
+          {title}
+
+          ENLACE:
+          {link}
+
+          CONTENIDO DISPONIBLE:
+          {source_content}
+
+          ============================================================
+          FORMATO
+          ============================================================
+
+          Comienza exactamente con:
+
+          🧭 **Noticias**
+
+          o:
+
+          🧭 **Análisis**
+
+          dependiendo de la naturaleza de la noticia.
+
+          Después:
+
+          # [Título atractivo en español]
+
+          [Introducción de 1-2 párrafos.]
+
+          **El dato que lo pone en perspectiva**
+
+          [Contexto importante.]
+
+          **La señal que más dice**
+
+          [Explicación del detalle más interesante.]
+
+          **Por qué importa**
+
+          [Explicación de por qué la información es relevante
+          para GTA VI.]
+
+          Si corresponde, añade una advertencia:
+
+          ⚠️ **Esto no es un anuncio oficial ni una filtración.**
+          [Explica qué parte es análisis, opinión o especulación.]
+
+          ============================================================
+          ESTILO
+          ============================================================
+
+          - Español natural.
+          - Profesional.
+          - Claro.
+          - Interesante.
+          - Estilo de una página especializada en GTA VI.
+          - No exageres.
+          - No inventes.
+          - No uses demasiados emojis.
+          - No pongas enlaces dentro del texto.
+          - No escribas comentarios sobre que eres una IA.
+          - No escribas una introducción fuera del formato.
+          - El resultado debe estar listo para pegar en Discord.
+
+          Genera únicamente el texto final del borrador.
+          """
+
+          # ============================================================
+          # OPENAI RESPONSES API
+          # ============================================================
+
+          response = requests.post(
+              "https://api.openai.com/v1/responses",
+              headers={
+                  "Authorization": f"Bearer {OPENAI_KEY}",
+                  "Content-Type": "application/json"
+              },
+              json={
+                  "model": "gpt-5.6-luna",
+                  "input": prompt,
+                  "max_output_tokens": 1600
+              },
+              timeout=90
           )
 
+          if not response.ok:
+
+              print("ERROR DE OPENAI")
+              print(response.status_code)
+              print(response.text)
+
+              exit(1)
+
+          data = response.json()
+
+          # ============================================================
+          # EXTRAER TEXTO
+          # ============================================================
+
+          ai_text = data.get(
+              "output_text",
+              ""
+          ).strip()
+
+          if not ai_text:
+
+              print(
+                  "OpenAI no devolvió texto."
+              )
+
+              print(
+                  json.dumps(
+                      data,
+                      indent=2,
+                      ensure_ascii=False
+                  )
+              )
+
+              exit(1)
+
+          # ============================================================
+          # FECHA
+          # ============================================================
+
+          today = datetime.now(
+              timezone.utc
+          ).strftime("%d/%m/%Y")
+
+          # ============================================================
+          # MENSAJE DISCORD
+          # ============================================================
+
+          final_message = (
+              "<@&1504921814759903343>\n\n"
+              + ai_text
+              + "\n\n"
+              + f"🔗 **Fuente original:** {link}\n\n"
+              + "⚠️ **REVISIÓN REQUERIDA**\n"
+              + "Este contenido es un borrador. "
+              + "Revisa la información antes de publicarlo "
+              + "en #noticias.\n\n"
+              + f"-# Cal Bot · {today}"
+          )
+
+          # ============================================================
+          # DISCORD
+          # ============================================================
+
           payload = {
-              "content": content,
+              "content": final_message,
               "username": "Cal Bot",
               "allowed_mentions": {
                   "roles": [
@@ -153,31 +373,46 @@ jobs:
               }
           }
 
-          # ============================================================
-          # ENVIAR A DISCORD
-          # ============================================================
-
-          response = requests.post(
+          discord_response = requests.post(
               WEBHOOK,
               json=payload,
               timeout=30
           )
 
-          response.raise_for_status()
+          if not discord_response.ok:
+
+              print(
+                  "ERROR DE DISCORD"
+              )
+
+              print(
+                  discord_response.status_code
+              )
+
+              print(
+                  discord_response.text
+              )
+
+              exit(1)
 
           print(
-              "Borrador enviado correctamente:"
+              "========================================"
           )
 
-          print(title)
+          print(
+              "BORRADOR ENVIADO A DISCORD"
+          )
+
+          print(
+              "========================================"
+          )
 
           # ============================================================
-          # GUARDAR COMO VISTA
+          # GUARDAR HISTORIAL
           # ============================================================
 
           seen.append(news_id)
 
-          # Mantener solamente los últimos 500
           seen = seen[-500:]
 
           with open(
