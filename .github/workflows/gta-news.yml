@@ -1,12 +1,10 @@
-name: GTA VI News - Cal Bot V4
+name: GTA VI News - Cal Bot V5
 
 on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
 
-# Evita que dos ejecuciones del mismo workflow trabajen
-# simultáneamente.
 concurrency:
   group: gta-vi-news
   cancel-in-progress: false
@@ -36,10 +34,10 @@ jobs:
           pip install feedparser requests beautifulsoup4
 
       # ============================================================
-      # CAL BOT
+      # CAL BOT V5
       # ============================================================
 
-      - name: Find and analyze GTA VI news
+      - name: Cal Bot Editor
         env:
           NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -55,6 +53,7 @@ jobs:
           import hashlib
           import re
           import sys
+          import time
 
           from bs4 import BeautifulSoup
           from datetime import datetime, timezone
@@ -93,27 +92,26 @@ jobs:
 
           ROLE_ID = "1504921814759903343"
 
-          # Número máximo de noticias guardadas.
           MAX_HISTORY = 1000
 
-          # Solo comparamos contra las noticias más recientes.
-          # Esto mantiene el prompt pequeño.
-          RECENT_HISTORY = 100
+          RECENT_HISTORY = 120
 
 
           # ============================================================
-          # VALIDAR SECRETOS
+          # VALIDACIÓN
           # ============================================================
 
           if not WEBHOOK:
 
-              print("ERROR: falta NEWS_DRAFT_WEBHOOK.")
+              print("ERROR: NEWS_DRAFT_WEBHOOK no existe.")
+
               sys.exit(1)
 
 
           if not GEMINI_KEY:
 
-              print("ERROR: falta GEMINI_API_KEY.")
+              print("ERROR: GEMINI_API_KEY no existe.")
+
               sys.exit(1)
 
 
@@ -124,11 +122,11 @@ jobs:
           def normalize_url(url):
 
               if not url:
+
                   return ""
 
               url = url.strip()
 
-              # Elimina parámetros habituales de tracking.
               url = re.sub(
                   r"([?&])(utm_[^&]+|oc=\d+)",
                   "",
@@ -136,33 +134,29 @@ jobs:
                   flags=re.IGNORECASE
               )
 
-              url = url.rstrip("?&")
-
-              return url
+              return url.rstrip("?&")
 
 
           def normalize_text(text):
 
               if not text:
+
                   return ""
 
               text = text.lower()
 
-              # Quitar URLs.
               text = re.sub(
                   r"https?://\S+",
                   " ",
                   text
               )
 
-              # Quitar puntuación.
               text = re.sub(
                   r"[^a-z0-9áéíóúüñ\s]",
                   " ",
                   text
               )
 
-              # Espacios múltiples.
               text = re.sub(
                   r"\s+",
                   " ",
@@ -183,11 +177,10 @@ jobs:
 
           def title_words(title):
 
-              text = normalize_text(title)
+              words = set(
+                  normalize_text(title).split()
+              )
 
-              words = set(text.split())
-
-              # Palabras demasiado genéricas.
               stopwords = {
 
                   "the",
@@ -202,6 +195,7 @@ jobs:
                   "for",
                   "with",
                   "from",
+
                   "gta",
                   "grand",
                   "theft",
@@ -215,39 +209,152 @@ jobs:
                   "las",
                   "un",
                   "una",
+                  "unos",
+                  "unas",
                   "de",
                   "del",
                   "en",
                   "y",
                   "o",
                   "para",
-                  "con"
+                  "con",
+                  "sobre"
 
               }
 
               return {
+
                   word
+
                   for word in words
+
                   if word not in stopwords
                   and len(word) > 2
+
               }
 
 
-          def title_similarity(title_a, title_b):
+          def title_similarity(a, b):
 
-              a = title_words(title_a)
-              b = title_words(title_b)
+              words_a = title_words(a)
 
-              if not a or not b:
+              words_b = title_words(b)
+
+              if not words_a or not words_b:
+
                   return 0.0
 
-              intersection = len(a & b)
-              union = len(a | b)
+              intersection = len(
+                  words_a & words_b
+              )
 
-              if union == 0:
-                  return 0.0
+              union = len(
+                  words_a | words_b
+              )
 
               return intersection / union
+
+
+          def ask_gemini(prompt, max_tokens=500):
+
+              payload = {
+
+                  "contents": [
+
+                      {
+
+                          "parts": [
+
+                              {
+
+                                  "text": prompt
+
+                              }
+
+                          ]
+
+                      }
+
+                  ],
+
+                  "generationConfig": {
+
+                      "temperature": 0.0,
+
+                      "maxOutputTokens": max_tokens
+
+                  }
+
+              }
+
+
+              response = requests.post(
+
+                  GEMINI_URL,
+
+                  params={
+                      "key": GEMINI_KEY
+                  },
+
+                  headers={
+
+                      "Content-Type":
+                          "application/json"
+
+                  },
+
+                  json=payload,
+
+                  timeout=90
+
+              )
+
+
+              if not response.ok:
+
+                  print("ERROR DE GEMINI")
+
+                  print(
+                      response.status_code
+                  )
+
+                  print(
+                      response.text
+                  )
+
+                  sys.exit(1)
+
+
+              data = response.json()
+
+
+              try:
+
+                  return (
+
+                      data["candidates"][0]
+                      ["content"]
+                      ["parts"][0]
+                      ["text"]
+                      .strip()
+
+                  )
+
+              except Exception:
+
+                  print(
+                      "Respuesta inesperada de Gemini."
+                  )
+
+                  print(
+                      json.dumps(
+                          data,
+                          indent=2,
+                          ensure_ascii=False
+                      )
+                  )
+
+                  sys.exit(1)
 
 
           # ============================================================
@@ -280,15 +387,14 @@ jobs:
               history = []
 
 
-          # Compatibilidad con el historial antiguo.
-          converted_history = []
+          converted = []
 
 
           for item in history:
 
               if isinstance(item, str):
 
-                  converted_history.append({
+                  converted.append({
 
                       "id": item,
 
@@ -298,16 +404,16 @@ jobs:
 
                       "summary": "",
 
-                      "status": "published"
+                      "status": "old"
 
                   })
 
               elif isinstance(item, dict):
 
-                  converted_history.append(item)
+                  converted.append(item)
 
 
-          history = converted_history
+          history = converted
 
 
           seen_ids = {
@@ -322,12 +428,13 @@ jobs:
 
 
           # ============================================================
-          # RSS
+          # BUSCAR RSS
           # ============================================================
 
           print("========================================")
-          print("CAL BOT V4")
-          print("BUSCANDO NOTICIAS NUEVAS...")
+          print("CAL BOT V5")
+          print("EDITOR DE NOTICIAS")
+          print("BUSCANDO INFORMACIÓN...")
           print("========================================")
 
 
@@ -338,9 +445,7 @@ jobs:
 
           if not feed.entries:
 
-              print(
-                  "No se encontraron noticias."
-              )
+              print("RSS vacío.")
 
               sys.exit(0)
 
@@ -359,42 +464,34 @@ jobs:
                   ""
               ).strip()
 
-              original_link = entry.get(
+              link = entry.get(
                   "link",
                   ""
               ).strip()
 
 
-              if not title or not original_link:
+              if not title or not link:
 
                   continue
 
 
               clean_link = normalize_url(
-                  original_link
+                  link
               )
 
               news_id = make_id(
-                  original_link
+                  link
               )
 
-
-              # --------------------------------------------------------
-              # 1. MISMA URL / MISMO ID
-              # --------------------------------------------------------
 
               if news_id in seen_ids:
 
                   print(
-                      f"Ignorada: ya existe en historial."
+                      "Ignorada: URL ya procesada."
                   )
 
                   continue
 
-
-              # --------------------------------------------------------
-              # 2. URL DUPLICADA
-              # --------------------------------------------------------
 
               duplicate_url = False
 
@@ -425,11 +522,7 @@ jobs:
                   continue
 
 
-              # --------------------------------------------------------
-              # 3. TÍTULO MUY PARECIDO
-              # --------------------------------------------------------
-
-              similar_title = False
+              similar = False
 
 
               for old in history[-RECENT_HISTORY:]:
@@ -451,34 +544,22 @@ jobs:
                   )
 
 
-                  if similarity >= 0.70:
+                  if similarity >= 0.72:
 
                       print(
                           "Ignorada: título demasiado "
-                          "similar a una noticia anterior."
+                          "parecido a una noticia anterior."
                       )
 
-                      print(
-                          f"Actual: {title}"
-                      )
-
-                      print(
-                          f"Anterior: {old_title}"
-                      )
-
-                      similar_title = True
+                      similar = True
 
                       break
 
 
-              if similar_title:
+              if similar:
 
                   continue
 
-
-              # --------------------------------------------------------
-              # CANDIDATO ENCONTRADO
-              # --------------------------------------------------------
 
               article = {
 
@@ -486,7 +567,7 @@ jobs:
 
                   "title": title,
 
-                  "link": original_link,
+                  "link": link,
 
                   "clean_link": clean_link
 
@@ -495,14 +576,10 @@ jobs:
               break
 
 
-          # ============================================================
-          # NO HAY CANDIDATO
-          # ============================================================
-
           if article is None:
 
               print("========================================")
-              print("NO HAY NOTICIAS NUEVAS.")
+              print("NO HAY CANDIDATOS NUEVOS.")
               print("========================================")
 
               sys.exit(0)
@@ -515,14 +592,14 @@ jobs:
 
 
           print("========================================")
-          print("CANDIDATO ENCONTRADO")
+          print("CANDIDATO")
           print(title)
           print(link)
           print("========================================")
 
 
           # ============================================================
-          # OBTENER CONTENIDO DEL ARTÍCULO
+          # DESCARGAR ARTÍCULO
           # ============================================================
 
           article_text = ""
@@ -532,13 +609,12 @@ jobs:
 
               headers = {
 
-                  "User-Agent": (
+                  "User-Agent":
                       "Mozilla/5.0 "
                       "(Windows NT 10.0; Win64; x64) "
                       "AppleWebKit/537.36 "
                       "(KHTML, like Gecko) "
                       "Chrome/120 Safari/537.36"
-                  )
 
               }
 
@@ -557,8 +633,8 @@ jobs:
 
 
               print(
-                  f"Estado de la página: "
-                  f"{page.status_code}"
+                  "Estado de página:",
+                  page.status_code
               )
 
 
@@ -578,7 +654,9 @@ jobs:
                       "script",
                       "style",
                       "noscript",
-                      "svg"
+                      "svg",
+                      "nav",
+                      "footer"
 
                   ]):
 
@@ -601,7 +679,9 @@ jobs:
 
                       if len(text) >= 50:
 
-                          paragraphs.append(text)
+                          paragraphs.append(
+                              text
+                          )
 
 
                   article_text = "\n".join(
@@ -615,8 +695,7 @@ jobs:
           except Exception as error:
 
               print(
-                  "No se pudo obtener "
-                  "el artículo completo."
+                  "No se pudo obtener el artículo."
               )
 
               print(error)
@@ -625,57 +704,45 @@ jobs:
           if not article_text:
 
               article_text = (
-                  "No fue posible obtener "
-                  "el contenido completo."
+                  "No se pudo obtener "
+                  "el texto completo del artículo."
               )
 
 
           # ============================================================
-          # COMPARACIÓN SEMÁNTICA
+          # HISTORIAL PARA EDITOR
           # ============================================================
 
-          print("========================================")
-          print("COMPARANDO CON NOTICIAS ANTERIORES...")
-          print("========================================")
-
-
-          recent_articles = []
+          previous_news = []
 
 
           for old in history[-RECENT_HISTORY:]:
 
-              old_title = old.get(
-                  "title",
-                  ""
-              )
+              if old.get("title"):
 
-              old_summary = old.get(
-                  "summary",
-                  ""
-              )
+                  previous_news.append({
 
-              old_url = old.get(
-                  "url",
-                  ""
-              )
+                      "title":
+                          old.get("title"),
 
+                      "summary":
+                          old.get(
+                              "summary",
+                              ""
+                          )[:1500],
 
-              if old_title:
-
-                  recent_articles.append({
-
-                      "title": old_title,
-
-                      "summary": old_summary[:1500],
-
-                      "url": old_url
+                      "status":
+                          old.get(
+                              "status",
+                              ""
+                          )
 
                   })
 
 
-          history_for_ai = json.dumps(
+          previous_json = json.dumps(
 
-              recent_articles,
+              previous_news,
 
               ensure_ascii=False,
 
@@ -684,55 +751,28 @@ jobs:
           )
 
 
-          duplicate_prompt = f"""
+          # ============================================================
+          # PASO 1:
+          # ¿ESTO MERECE SER UNA NOTICIA?
+          # ============================================================
 
-          Eres un editor especializado en detectar
-          noticias recicladas sobre Grand Theft Auto VI.
+          print("========================================")
+          print("EVALUANDO VALOR NOTICIOSO...")
+          print("========================================")
 
-          Debes determinar si una noticia NUEVA trata
-          esencialmente sobre la MISMA INFORMACIÓN que
-          alguna noticia anterior.
 
-          IMPORTANTE:
+          editor_prompt = f"""
 
-          Dos artículos pueden tener:
+          Eres el editor jefe de CAL FAMILY,
+          una comunidad especializada en Grand Theft Auto VI.
 
-          - títulos diferentes
-          - medios diferentes
-          - URLs diferentes
-          - redacciones diferentes
+          Tu primera tarea NO es escribir la noticia.
 
-          y aun así ser la MISMA NOTICIA.
-
-          Ejemplo:
-
-          Artículo nuevo:
-          "GTA 6 podría tener una campaña de 80 horas"
-
-          Artículo anterior:
-          "Un desarrollador estima que completar GTA VI
-          tomará unas 80 horas"
-
-          Esto debe considerarse DUPLICADO.
-
-          Sin embargo:
-
-          Artículo nuevo:
-          "Rockstar confirma una nueva función de GTA VI"
-
-          Artículo anterior:
-          "Un desarrollador habla de la duración de GTA VI"
-
-          Esto NO es duplicado.
-
-          Solo considera duplicado cuando la información
-          principal sea esencialmente la misma.
-
-          No consideres duplicado simplemente porque
-          ambos artículos hablan de GTA VI.
+          Debes decidir si esta información merece llegar
+          al canal interno de revisión.
 
           ============================================================
-          NOTICIA NUEVA
+          NUEVO ARTÍCULO
           ============================================================
 
           TÍTULO:
@@ -744,10 +784,79 @@ jobs:
           {article_text[:12000]}
 
           ============================================================
-          HISTORIAL RECIENTE
+          HISTORIAL
           ============================================================
 
-          {history_for_ai}
+          {previous_json}
+
+          ============================================================
+          REGLAS EDITORIALES
+          ============================================================
+
+          DESCARTA si:
+
+          1. Es una especulación genérica.
+
+          2. Simplemente pregunta "cuánto pesará GTA VI",
+             "cuánto durará GTA VI", etc., sin presentar
+             información nueva verificable.
+
+          3. Es un artículo reciclado que vuelve a presentar
+             información que ya apareció anteriormente.
+
+          4. Es un artículo tipo "todo lo que sabemos"
+             que no contiene información nueva.
+
+          5. Solo contiene opiniones generales de un periodista.
+
+          6. Solo describe que el juego "se ve increíble",
+             "parece impresionante" o frases similares.
+
+          7. Es una recopilación de rumores antiguos.
+
+          8. No contiene ningún dato concreto nuevo.
+
+          9. El contenido es prácticamente una reacción,
+             expectativa o especulación sin información nueva.
+
+          10. El artículo utiliza rumores antiguos como si
+              fueran una novedad.
+
+          ACEPTA si:
+
+          1. Rockstar Games publica información nueva.
+
+          2. Aparece una nueva declaración verificable de
+             Rockstar Games, Take-Two o un desarrollador.
+
+          3. Se publica material oficial nuevo.
+
+          4. Aparece una entrevista nueva que contiene
+             información concreta.
+
+          5. Existe un dato nuevo verificable sobre GTA VI.
+
+          6. Un medio publica información sustancialmente
+             nueva que no aparece en el historial.
+
+          7. Existe un rumor relevante que contiene información
+             claramente nueva. En ese caso debe clasificarse
+             como RUMOR y nunca como hecho.
+
+          ============================================================
+          REGLA PRINCIPAL
+          ============================================================
+
+          "Hablar de GTA VI" NO significa que sea una noticia.
+
+          Tiene que existir información NUEVA.
+
+          No rellenes huecos.
+
+          No supongas.
+
+          No interpretes una pregunta de un periodista como
+          información oficial.
 
           ============================================================
           RESPUESTA
@@ -756,133 +865,36 @@ jobs:
           Responde ÚNICAMENTE con JSON válido:
 
           {{
-            "duplicate": true,
-            "matched_title": "título de la noticia anterior",
-            "reason": "explicación breve"
+            "publish": true,
+            "type": "Noticias",
+            "reason": "explicación breve",
+            "new_information": "qué información nueva aporta"
           }}
 
-          o:
+          O:
 
           {{
-            "duplicate": false,
-            "matched_title": "",
-            "reason": "explicación breve"
+            "publish": false,
+            "type": "Descartada",
+            "reason": "explicación breve",
+            "new_information": ""
           }}
-
-          No escribas markdown.
-          No escribas nada fuera del JSON.
 
           """
 
-
-          duplicate_payload = {
-
-              "contents": [
-
-                  {
-
-                      "parts": [
-
-                          {
-
-                              "text":
-                                  duplicate_prompt
-
-                          }
-
-                      ]
-
-                  }
-
-              ],
-
-              "generationConfig": {
-
-                  "temperature": 0.0,
-
-                  "maxOutputTokens": 300
-
-              }
-
-          }
-
-
-          duplicate_response = requests.post(
-
-              GEMINI_URL,
-
-              params={
-
-                  "key": GEMINI_KEY
-
-              },
-
-              headers={
-
-                  "Content-Type":
-                      "application/json"
-
-              },
-
-              json=duplicate_payload,
-
-              timeout=90
-
+          editor_raw = ask_gemini(
+              editor_prompt,
+              500
           )
 
 
-          if not duplicate_response.ok:
-
-              print("========================================")
-              print("ERROR DE GEMINI AL COMPARAR")
-              print(duplicate_response.status_code)
-              print(duplicate_response.text)
-              print("========================================")
-
-              sys.exit(1)
-
-
-          duplicate_data = duplicate_response.json()
-
-
-          try:
-
-              duplicate_text = (
-
-                  duplicate_data["candidates"][0]
-                  ["content"]
-                  ["parts"][0]
-                  ["text"]
-                  .strip()
-
-              )
-
-          except Exception:
-
-              print(
-                  "ERROR: respuesta inesperada "
-                  "de Gemini."
-              )
-
-              print(
-                  json.dumps(
-                      duplicate_data,
-                      indent=2,
-                      ensure_ascii=False
-                  )
-              )
-
-              sys.exit(1)
-
-
-          # Gemini puede devolver JSON dentro de ```json.
-          duplicate_text = re.sub(
+          editor_raw = re.sub(
 
               r"^```json\s*|\s*```$",
 
               "",
 
-              duplicate_text,
+              editor_raw,
 
               flags=re.IGNORECASE
 
@@ -891,65 +903,47 @@ jobs:
 
           try:
 
-              duplicate_result = json.loads(
-                  duplicate_text
+              editor_result = json.loads(
+                  editor_raw
               )
 
           except Exception:
 
               print(
-                  "ERROR: Gemini no devolvió JSON válido."
+                  "Gemini no devolvió JSON válido."
               )
 
-              print(duplicate_text)
+              print(editor_raw)
 
               sys.exit(1)
 
 
-          is_duplicate = bool(
-
-              duplicate_result.get(
-                  "duplicate",
+          publish = bool(
+              editor_result.get(
+                  "publish",
                   False
               )
-
           )
 
 
           # ============================================================
-          # DESCARTAR RECICLADA
+          # DESCARTADA
           # ============================================================
 
-          if is_duplicate:
+          if not publish:
 
-              matched = duplicate_result.get(
-                  "matched_title",
-                  ""
-              )
-
-              reason = duplicate_result.get(
+              reason = editor_result.get(
                   "reason",
-                  ""
+                  "No cumple los criterios editoriales."
               )
 
 
               print("========================================")
-              print("NOTICIA RECICLADA")
-              print("NO SE PUBLICARÁ")
+              print("DESCARTADA POR CAL BOT")
               print("========================================")
 
-              print(
-                  f"Coincide con: {matched}"
-              )
+              print(reason)
 
-              print(
-                  f"Razón: {reason}"
-              )
-
-
-              # IMPORTANTE:
-              # Guardamos el artículo descartado para que no vuelva
-              # a analizarse en las siguientes ejecuciones.
 
               history.append({
 
@@ -960,10 +954,10 @@ jobs:
                   "title": title,
 
                   "summary":
-                      f"DESCARTADA COMO RECICLADA. "
-                      f"{reason}",
+                      f"DESCARTADA: {reason}",
 
-                  "status": "duplicate",
+                  "status":
+                      "discarded",
 
                   "date":
                       datetime.now(
@@ -999,54 +993,38 @@ jobs:
                   )
 
 
-              print(
-                  "Artículo marcado como reciclado."
-              )
-
               sys.exit(0)
 
 
           # ============================================================
-          # NOTICIA REALMENTE NUEVA
+          # NOTICIA APROBADA
           # ============================================================
+
+          news_type = editor_result.get(
+              "type",
+              "Noticias"
+          )
+
 
           print("========================================")
-          print("NOTICIA REALMENTE NUEVA")
-          print("CONTINUANDO CON LA REDACCIÓN...")
+          print("NOTICIA APROBADA POR EL EDITOR")
           print("========================================")
 
 
           # ============================================================
-          # PROMPT DE REDACCIÓN
+          # PASO 2:
+          # REDACCIÓN
           # ============================================================
 
-          prompt = f"""
+          writing_prompt = f"""
 
-          Eres el editor de noticias de CAL FAMILY,
-          una comunidad dedicada a Grand Theft Auto VI.
+          Eres el editor de noticias de CAL FAMILY.
 
-          Convierte la siguiente información en un borrador
-          profesional para Discord.
-
-          Solo puedes afirmar información que aparezca
-          en el material proporcionado.
-
-          Nunca inventes:
-
-          - declaraciones
-          - fechas
-          - cifras
-          - características
-          - precios
-          - personajes
-          - mapas
-          - información de Rockstar Games
-
-          Si algo es opinión, análisis, rumor o especulación,
-          debes indicarlo claramente.
+          Redacta un borrador profesional para Discord
+          utilizando ÚNICAMENTE la información del artículo.
 
           ============================================================
-          NOTICIA
+          ARTÍCULO
           ============================================================
 
           TÍTULO:
@@ -1058,10 +1036,55 @@ jobs:
           {article_text[:12000]}
 
           ============================================================
+          INFORMACIÓN NUEVA DETECTADA
+          ============================================================
+
+          {editor_result.get(
+              "new_information",
+              ""
+          )}
+
+          ============================================================
+          REGLAS
+          ============================================================
+
+          No inventes absolutamente nada.
+
+          No añadas:
+
+          - cifras no presentes
+          - fechas no presentes
+          - declaraciones no presentes
+          - características no presentes
+          - información de Rockstar no presente
+          - contexto inventado
+          - rumores como hechos
+
+          Si el artículo no proporciona suficiente información
+          para una sección, ELIMINA ESA SECCIÓN.
+
+          No rellenes espacio con frases genéricas.
+
+          No digas que algo está confirmado si no está confirmado.
+
+          Si es rumor:
+
+          ⚠️ **Rumor**
+          [explicación]
+
+          Si es análisis:
+
+          🧭 **Análisis**
+
+          Si es información periodística factual:
+
+          🧭 **Noticias**
+
+          ============================================================
           FORMATO
           ============================================================
 
-          Comienza exactamente con:
+          Comienza con:
 
           🧭 **Noticias**
 
@@ -1073,161 +1096,95 @@ jobs:
 
           # [Título atractivo en español]
 
-          [Introducción clara.]
+          [Resumen de 1-2 párrafos.]
+
+          Solo utiliza:
 
           **El dato que lo pone en perspectiva**
 
-          [Contexto importante.]
+          si realmente existe contexto relevante.
+
+          Solo utiliza:
 
           **La señal que más dice**
 
-          [Detalle más interesante.]
+          si existe un detalle relevante.
+
+          Solo utiliza:
 
           **Por qué importa**
 
-          [Por qué es relevante para GTA VI.]
+          si puedes explicar la importancia basándote
+          en información real del artículo.
 
-          Si corresponde:
+          Si es necesario:
 
           ⚠️ **Esto no es un anuncio oficial ni una filtración.**
-
-          [Explicación.]
 
           ============================================================
           ESTILO
           ============================================================
 
-          - Español natural.
-          - Profesional.
-          - Claro.
-          - Atractivo.
-          - No exageres.
-          - No inventes.
-          - No uses demasiados emojis.
-          - No pongas enlaces dentro del artículo.
-          - No menciones que eres una IA.
-          - No escribas explicaciones fuera del artículo.
+          Español natural.
 
-          Genera únicamente el borrador final.
+          Profesional.
+
+          Directo.
+
+          Atractivo.
+
+          Estilo de una página especializada en GTA VI.
+
+          Sin exageraciones.
+
+          Sin clickbait.
+
+          Sin emojis innecesarios.
+
+          No pongas enlaces.
+
+          No menciones que eres una IA.
+
+          Devuelve ÚNICAMENTE el texto final.
 
           """
 
 
-          # ============================================================
-          # GEMINI - REDACCIÓN
-          # ============================================================
+          ai_text = ask_gemini(
 
-          print(
-              "Enviando noticia a Gemini..."
-          )
+              writing_prompt,
 
-
-          generation_payload = {
-
-              "contents": [
-
-                  {
-
-                      "parts": [
-
-                          {
-
-                              "text": prompt
-
-                          }
-
-                      ]
-
-                  }
-
-              ],
-
-              "generationConfig": {
-
-                  "temperature": 0.2,
-
-                  "maxOutputTokens": 1400
-
-              }
-
-          }
-
-
-          response = requests.post(
-
-              GEMINI_URL,
-
-              params={
-
-                  "key": GEMINI_KEY
-
-              },
-
-              headers={
-
-                  "Content-Type":
-                      "application/json"
-
-              },
-
-              json=generation_payload,
-
-              timeout=90
+              1400
 
           )
 
 
-          if not response.ok:
+          # ============================================================
+          # LIMPIEZA
+          # ============================================================
 
-              print("========================================")
-              print("ERROR DE GEMINI")
-              print(response.status_code)
-              print(response.text)
-              print("========================================")
-
-              sys.exit(1)
+          ai_text = ai_text.strip()
 
 
-          data = response.json()
+          if ai_text.startswith(
+              "```"
+          ):
 
+              ai_text = re.sub(
 
-          try:
-
-              ai_text = (
-
-                  data["candidates"][0]
-                  ["content"]
-                  ["parts"][0]
-                  ["text"]
-                  .strip()
+                  r"^```[a-zA-Z]*\s*",
+                  "",
+                  ai_text
 
               )
 
-          except Exception:
+              ai_text = re.sub(
 
-              print(
-                  "ERROR: respuesta inesperada "
-                  "de Gemini."
-              )
+                  r"\s*```$",
+                  "",
+                  ai_text
 
-              print(
-                  json.dumps(
-                      data,
-                      indent=2,
-                      ensure_ascii=False
-                  )
-              )
-
-              sys.exit(1)
-
-
-          if not ai_text:
-
-              print(
-                  "Gemini devolvió texto vacío."
-              )
-
-              sys.exit(1)
+              ).strip()
 
 
           # ============================================================
@@ -1240,7 +1197,7 @@ jobs:
 
 
           # ============================================================
-          # MENSAJE
+          # DISCORD
           # ============================================================
 
           final_message = (
@@ -1268,20 +1225,13 @@ jobs:
           )
 
 
-          # ============================================================
-          # DISCORD
-          # ============================================================
-
-          print(
-              "Enviando borrador a Discord..."
-          )
-
-
           discord_payload = {
 
-              "content": final_message,
+              "content":
+                  final_message,
 
-              "username": "Cal Bot",
+              "username":
+                  "Cal Bot",
 
               "allowed_mentions": {
 
@@ -1294,6 +1244,11 @@ jobs:
               }
 
           }
+
+
+          print(
+              "Enviando borrador a Discord..."
+          )
 
 
           discord_response = requests.post(
@@ -1309,17 +1264,23 @@ jobs:
 
           if not discord_response.ok:
 
-              print("========================================")
-              print("ERROR DE DISCORD")
-              print(discord_response.status_code)
-              print(discord_response.text)
-              print("========================================")
+              print(
+                  "ERROR DE DISCORD"
+              )
+
+              print(
+                  discord_response.status_code
+              )
+
+              print(
+                  discord_response.text
+              )
 
               sys.exit(1)
 
 
           # ============================================================
-          # GUARDAR NOTICIA PUBLICADA
+          # GUARDAR NOTICIA
           # ============================================================
 
           history.append({
@@ -1333,7 +1294,8 @@ jobs:
               "summary":
                   ai_text[:2500],
 
-              "status": "published",
+              "status":
+                  "published_to_review",
 
               "date":
                   datetime.now(
@@ -1370,7 +1332,8 @@ jobs:
 
 
           print("========================================")
-          print("BORRADOR ENVIADO A DISCORD")
+          print("CAL BOT V5")
+          print("BORRADOR ENVIADO")
           print("NOTICIA REGISTRADA")
           print("========================================")
 
@@ -1379,7 +1342,7 @@ jobs:
 
 
       # ============================================================
-      # GUARDAR HISTORIAL EN GITHUB
+      # GUARDAR HISTORIAL
       # ============================================================
 
       - name: Save news history
@@ -1393,11 +1356,11 @@ jobs:
 
           if git diff --cached --quiet; then
 
-            echo "No hay cambios en el historial."
+            echo "No hay cambios."
 
           else
 
-            git commit -m "Cal Bot: update GTA VI news history"
+            git commit -m "Cal Bot: update GTA VI editorial history"
 
             git push
 
