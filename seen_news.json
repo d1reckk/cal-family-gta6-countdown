@@ -1,81 +1,90 @@
-[
-  {
-    "id": "8e01f4c71f832dcab43529c38ce929e5f0288f08cc19aac8925054ffc6c54dd6",
-    "title": "",
-    "content_hash": ""
-  },
-  {
-    "id": "cea33b4b2ca3c1418d5e4cbe95fcee0330fd6882311959ba8ea9e05147a3984e",
-    "title": "",
-    "content_hash": ""
-  },
-  {
-    "id": "6e7452e8ce094986610451d083f84d190e10362205f3b8dd103c765843603d6c",
-    "title": "",
-    "content_hash": ""
-  },
-  {
-    "id": "77707c8f1f68129725d606bb9e7e5a658260126948779a3b9d079d8716e7653e",
-    "title": "",
-    "content_hash": ""
-  },
-  {
-    "id": "b0f82e98acc8efb55718120533772372615ebbcf3cccff6cd948a5c41ac138ca",
-    "title": "GTA 6’s Extended Look Made Me Say 'Holy Sh*t' About 50 Times - IGN",
-    "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "status": "published",
-    "date": "2026-08-30T09:26:17.825457+00:00"
-  },
-  {
-    "id": "a858d5f7c5ef6b36037d8108d5516a5ed69533be3521c9b5b9d0a02bac7dc9dd",
-    "title": "The Wildest Video Game Budgets Can't Hold A Candle To GTA 6 - Engadget",
-    "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "status": "duplicate",
-    "date": "2026-08-30T09:29:09.920079+00:00"
-  },
-  {
-    "id": "67eeeaa7244a847ef128a45b91ab4d3337041edd9fe42abc217a14179916052c",
-    "title": "Grand Theft Auto VI: An Extended Look — Now Playing - Rockstar Games",
-    "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "status": "duplicate",
-    "date": "2026-08-30T09:31:52.000845+00:00"
-  },
-  {
-    "id": "6f1513540274f8f6a7b2b95d3e9d50730e5b896a08a5d3b2693fd5de0d6b8956",
-    "url": "https://news.google.com/rss/articles/CBMimwFBVV95cUxOdTZuN1lRWXQzc0lNTEZleU1jMVlCUDd2WFlYYmc2Tl90Y19mR2xYWFRYaHg0TldlT3hqbGJ2cDA0UllmZXZxYjB1SW5UYUt1TGYzLTQ3dGZRdkVSLUc5ZWhsbkVWdTBLWWdBeVd6WDRhTS1DaFFmbEh5YTFOdWFuMkY3cExHRXpXQ2pzbzdlUTNiaGhabWJHUllNbw",
-    "title": "The Grand Ambitions of Grand Theft Auto VI - The New York Times",
-    "status": "published",
-    "date": "2026-08-30T09:37:56.594552+00:00"
-  },
-  {
-    "id": "413927ef94dc4ae5ddb03ba2b95b4007b3c596c67ea0a3ed2286b5ab72acea96",
-    "url": "https://news.google.com/rss/articles/CBMikwFBVV95cUxONHJWU1lRaEFNVnVETWsyeHppUHV4aWUtX2dBTlM3aDEyNzNtOXAtY05NU3FaTXNrZkJEaU43eU5ndUhFeFI1aWE0TUQ2aVJzUEpTOC0tbERSNnFra0ZuWWx3RlNWS05tMUJXNjludi0zMEVYQWc0RnlNR3dmY1FycEJuQUhTMTlKTDZoZzJ3dURkbXfSAZgBQVVfeXFMTXkzWnBmNDBseFNMamhqV1laaThuN3F1emdINTdfek5WYno2dTcyNGFzSDkxTkY1Q1RYakxTNExtTVFEczRyWG15akUtaThCUndDT2JubnE0VTFScy0xYk83aXl2SThZcUR0cGp6TWl1WUxtbEk2TUt3LUZVWkZ2bHg0ZFdfLV9IdEt6aWJnTFNnOE8tTkdCMjY",
-    "title": "GTA 6 Takes Around 80 Hours To Complete, Says Developer - TechPowerUp",
-    "status": "published",
-    "date": "2026-08-30T09:39:56.693753+00:00"
-  },
-  {
-    "id": "b0e08e67514dcc2c77133b59752c64f0b23cecb4c602bb76acc81dc37ac07658",
-    "url": "https://news.google.com/rss/articles/CBMifEFVX3lxTE1HUEtCLU5naDlnRHlHaGdSMTFiVXhpblprMUdXcENodXFHQUhTN0p0YkpPdHpOSERCWHRvN2NleW9fRDY0TVo4SEJOZUZqZXFYLUp5c1FiUW9yc3l5TjFYZ0cxdnNNZUxVdVpuRUtQUDBjZHV2VGFZU2t0OE8",
-    "title": "'GTA 6' file size: How large will the game be? - Mashable",
-    "summary": "🧭 **Análisis**\n\n# ¿Cuánto pesará GTA 6? Esto es lo que se discute sobre el tamaño del archivo\n\nEl tamaño de descarga y almacenamiento que requerirá Grand Theft Auto VI ha generado diversos cuestionamientos entre la comunidad de jugadores, considerando los estándares actuales de la industria para títulos de gran envergadura.\n\n**El dato que lo pone en perspectiva**\n\nHasta el momento, ni Rockstar Games ni Take-Two Interactive han publicado cifras oficiales sobre cuántos gigabytes ocupará el juego en las consolas y plataformas en las que estará disponible. \n\n**La señal que más dice**\n\nLa atención se centra en las tendencias tecnológicas actuales y en cómo los mundos abiertos detallados suelen demandar una mayor capacidad de almacenamiento en el hardware moderno, aunque cualquier estimación numérica actual pertenece estrictamente al terreno de la especulación.\n\n**Por qué importa**\n\nConocer el tamaño del archivo es fundamental para que los miembros de la comunidad puedan planificar el espacio disponible en sus sistemas antes del lanzamiento del título.\n\n⚠️ **Esto no es un anuncio oficial ni una filtración.**\n\nTodo lo relacionado con el peso del archivo del juego son estimaciones y análisis de la industria, ya que no existe información oficial confirmada por parte de los desarrolladores.",
-    "status": "published",
-    "date": "2026-08-30T09:44:14.768556+00:00"
-  },
-  {
-    "id": "01e6b61155eaad7fa35a311663f34695636b3fc0d8a5eded8ac258fb2277181b",
-    "url": "https://news.google.com/rss/articles/CBMiqAFBVV95cUxNaGNQcUVXSnhZZ2VxbzZJOEZ5eUNkeDZtWHNvV3M3VWRncWlxSXBVa1gxNFpCMHhxNFJOeDJJck1LbnhUX3o1MEZzd1hHa293ZXpWUGdEZ0pXN3Vfdm4tczRueXpIRFlOcnVsVEpVS2NNUHNLMjNvZjFLYndpOURvWVBzYnFwX25ndXc3NFN5YXdRX09ybE5GQjZCSWlKY0lsQUdPekMyZnk",
-    "title": "Jason and Lucia's Fridge In GTA 6 Is Driving Me Crazy - Kotaku",
-    "summary": "DESCARTADA: El artículo de Kotaku es una pieza de opinión/reacción sobre un detalle menor (la nevera de Jason y Lucia) que no aporta información nueva, oficial o relevante sobre el desarrollo o contenido de GTA VI.",
-    "status": "discarded",
-    "date": "2026-08-30T09:47:14.795219+00:00"
-  },
-  {
-    "id": "de26732e5ad8d2fcdc2d1e09d69fcd6b1be483d711ca0884566ad4a8f095a888",
-    "url": "https://news.google.com/rss/articles/CBMigwFBVV95cUxOUkl0YzZvSXltTXZwRzRqdEdrRWRPUkVHS0JwQTY5UXNZc3pRRXd3dDI0Rk02Ni12STJQbndVV0dHTEVTa1NDOXpCVkVvMk1oN1ZQengwUzFCT0VOcmZZeWdCUHNrMGdhOUY2WmZVZE85UnZSYU5DNDBFM1J1Y1BCY292QQ",
-    "title": "Grand Theft Auto VI: An Extended Look is Now on Netflix - Netflix",
-    "summary": "DESCARTADA: El artículo es un duplicado o variante de una noticia ya existente en el historial ('Grand Theft Auto VI: An Extended Look — Now Playing - Rockstar Games' y 'GTA 6’s Extended Look Made Me Say 'Holy Sh*t'...'), por lo que no aporta información nueva verificable.",
-    "status": "discarded",
-    "date": "2026-08-30T09:48:35.128050+00:00"
-  }
-]
+{
+  "urls": [
+    {
+      "id": "8e01f4c71f832dcab43529c38ce929e5f0288f08cc19aac8925054ffc6c54dd6",
+      "title": "",
+      "content_hash": ""
+    },
+    {
+      "id": "cea33b4b2ca3c1418d5e4cbe95fcee0330fd6882311959ba8ea9e05147a3984e",
+      "title": "",
+      "content_hash": ""
+    },
+    {
+      "id": "6e7452e8ce094986610451d083f84d190e10362205f3b8dd103c765843603d6c",
+      "title": "",
+      "content_hash": ""
+    },
+    {
+      "id": "77707c8f1f68129725d606bb9e7e5a658260126948779a3b9d079d8716e7653e",
+      "title": "",
+      "content_hash": ""
+    },
+    {
+      "id": "b0f82e98acc8efb55718120533772372615ebbcf3cccff6cd948a5c41ac138ca",
+      "title": "GTA 6’s Extended Look Made Me Say 'Holy Sh*t' About 50 Times - IGN",
+      "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "published",
+      "date": "2026-08-30T09:26:17.825457+00:00"
+    },
+    {
+      "id": "a858d5f7c5ef6b36037d8108d5516a5ed69533be3521c9b5b9d0a02bac7dc9dd",
+      "title": "The Wildest Video Game Budgets Can't Hold A Candle To GTA 6 - Engadget",
+      "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "duplicate",
+      "date": "2026-08-30T09:29:09.920079+00:00"
+    },
+    {
+      "id": "67eeeaa7244a847ef128a45b91ab4d3337041edd9fe42abc217a14179916052c",
+      "title": "Grand Theft Auto VI: An Extended Look — Now Playing - Rockstar Games",
+      "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "duplicate",
+      "date": "2026-08-30T09:31:52.000845+00:00"
+    },
+    {
+      "id": "6f1513540274f8f6a7b2b95d3e9d50730e5b896a08a5d3b2693fd5de0d6b8956",
+      "url": "https://news.google.com/rss/articles/CBMimwFBVV95cUxOdTZuN1lRWXQzc0lNTEZleU1jMVlCUDd2WFlYYmc2Tl90Y19mR2xYWFRYaHg0TldlT3hqbGJ2cDA0UllmZXZxYjB1SW5UYUt1TGYzLTQ3dGZRdkVSLUc5ZWhsbkVWdTBLWWdBeVd6WDRhTS1DaFFmbEh5YTFOdWFuMkY3cExHRXpXQ2pzbzdlUTNiaGhabWJHUllNbw",
+      "title": "The Grand Ambitions of Grand Theft Auto VI - The New York Times",
+      "status": "published",
+      "date": "2026-08-30T09:37:56.594552+00:00"
+    },
+    {
+      "id": "413927ef94dc4ae5ddb03ba2b95b4007b3c596c67ea0a3ed2286b5ab72acea96",
+      "url": "https://news.google.com/rss/articles/CBMikwFBVV95cUxONHJWU1lRaEFNVnVETWsyeHppUHV4aWUtX2dBTlM3aDEyNzNtOXAtY05NU3FaTXNrZkJEaU43eU5ndUhFeFI1aWE0TUQ2aVJzUEpTOC0tbERSNnFra0ZuWWx3RlNWS05tMUJXNjludi0zMEVYQWc0RnlNR3dmY1FycEJuQUhTMTlKTDZoZzJ3dURkbXfSAZgBQVVfeXFMTXkzWnBmNDBseFNMamhqV1laaThuN3F1emdINTdfek5WYno2dTcyNGFzSDkxTkY1Q1RYakxTNExtTVFEczRyWG15akUtaThCUndDT2JubnE0VTFScy0xYk83aXl2SThZcUR0cGp6TWl1WUxtbEk2TUt3LUZVWkZ2bHg0ZFdfLV9IdEt6aWJnTFNnOE8tTkdCMjY",
+      "title": "GTA 6 Takes Around 80 Hours To Complete, Says Developer - TechPowerUp",
+      "status": "published",
+      "date": "2026-08-30T09:39:56.693753+00:00"
+    },
+    {
+      "id": "b0e08e67514dcc2c77133b59752c64f0b23cecb4c602bb76acc81dc37ac07658",
+      "url": "https://news.google.com/rss/articles/CBMifEFVX3lxTE1HUEtCLU5naDlnRHlHaGdSMTFiVXhpblprMUdXcENodXFHQUhTN0p0YkpPdHpOSERCWHRvN2NleW9fRDY0TVo4SEJOZUZqZXFYLUp5c1FiUW9yc3l5TjFYZ0cxdnNNZUxVdVpuRUtQUDBjZHV2VGFZU2t0OE8",
+      "title": "'GTA 6' file size: How large will the game be? - Mashable",
+      "summary": "🧭 **Análisis**\n\n# ¿Cuánto pesará GTA 6? Esto es lo que se discute sobre el tamaño del archivo\n\nEl tamaño de descarga y almacenamiento que requerirá Grand Theft Auto VI ha generado diversos cuestionamientos entre la comunidad de jugadores, considerando los estándares actuales de la industria para títulos de gran envergadura.\n\n**El dato que lo pone en perspectiva**\n\nHasta el momento, ni Rockstar Games ni Take-Two Interactive han publicado cifras oficiales sobre cuántos gigabytes ocupará el juego en las consolas y plataformas en las que estará disponible. \n\n**La señal que más dice**\n\nLa atención se centra en las tendencias tecnológicas actuales y en cómo los mundos abiertos detallados suelen demandar una mayor capacidad de almacenamiento en el hardware moderno, aunque cualquier estimación numérica actual pertenece estrictamente al terreno de la especulación.\n\n**Por qué importa**\n\nConocer el tamaño del archivo es fundamental para que los miembros de la comunidad puedan planificar el espacio disponible en sus sistemas antes del lanzamiento del título.\n\n⚠️ **Esto no es un anuncio oficial ni una filtración.**\n\nTodo lo relacionado con el peso del archivo del juego son estimaciones y análisis de la industria, ya que no existe información oficial confirmada por parte de los desarrolladores.",
+      "status": "published",
+      "date": "2026-08-30T09:44:14.768556+00:00"
+    },
+    {
+      "id": "01e6b61155eaad7fa35a311663f34695636b3fc0d8a5eded8ac258fb2277181b",
+      "url": "https://news.google.com/rss/articles/CBMiqAFBVV95cUxNaGNQcUVXSnhZZ2VxbzZJOEZ5eUNkeDZtWHNvV3M3VWRncWlxSXBVa1gxNFpCMHhxNFJOeDJJck1LbnhUX3o1MEZzd1hHa293ZXpWUGdEZ0pXN3Vfdm4tczRueXpIRFlOcnVsVEpVS2NNUHNLMjNvZjFLYndpOURvWVBzYnFwX25ndXc3NFN5YXdRX09ybE5GQjZCSWlKY0lsQUdPekMyZnk",
+      "title": "Jason and Lucia's Fridge In GTA 6 Is Driving Me Crazy - Kotaku",
+      "summary": "DESCARTADA: El artículo de Kotaku es una pieza de opinión/reacción sobre un detalle menor (la nevera de Jason y Lucia) que no aporta información nueva, oficial o relevante sobre el desarrollo o contenido de GTA VI.",
+      "status": "discarded",
+      "date": "2026-08-30T09:47:14.795219+00:00"
+    },
+    {
+      "id": "de26732e5ad8d2fcdc2d1e09d69fcd6b1be483d711ca0884566ad4a8f095a888",
+      "url": "https://news.google.com/rss/articles/CBMigwFBVV95cUxOUkl0YzZvSXltTXZwRzRqdEdrRWRPUkVHS0JwQTY5UXNZc3pRRXd3dDI0Rk02Ni12STJQbndVV0dHTEVTa1NDOXpCVkVvMk1oN1ZQengwUzFCT0VOcmZZeWdCUHNrMGdhOUY2WmZVZE85UnZSYU5DNDBFM1J1Y1BCY292QQ",
+      "title": "Grand Theft Auto VI: An Extended Look is Now on Netflix - Netflix",
+      "summary": "DESCARTADA: El artículo es un duplicado o variante de una noticia ya existente en el historial ('Grand Theft Auto VI: An Extended Look — Now Playing - Rockstar Games' y 'GTA 6’s Extended Look Made Me Say 'Holy Sh*t'...'), por lo que no aporta información nueva verificable.",
+      "status": "discarded",
+      "date": "2026-08-30T09:48:35.128050+00:00"
+    },
+    "https://news.google.com/rss/articles/CBMimwFBVV95cUxOdTZuN1lRWXQzc0lNTEZleU1jMVlCUDd2WFlYYmc2Tl90Y19mR2xYWFRYaHg0TldlT3hqbGJ2cDA0UllmZXZxYjB1SW5UYUt1TGYzLTQ3dGZRdkVSLUc5ZWhsbkVWdTBLWWdBeVd6WDRhTS1DaFFmbEh5YTFOdWFuMkY3cExHRXpXQ2pzbzdlUTNiaGhabWJHUllNbw?oc=5"
+  ],
+  "titles": [
+    "The Grand Ambitions of Grand Theft Auto VI - The New York Times"
+  ],
+  "content_hashes": [
+    "39567f6c7423fa81476a47eda835504a367fa2504381096364c5eb8d1b969515"
+  ]
+}
