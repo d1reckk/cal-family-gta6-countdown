@@ -1,0 +1,142 @@
+name: GTA VI Countdown
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  countdown:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate countdown image
+        run: |
+          pip install pillow requests
+
+          cat > countdown.py <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          import requests
+          import os
+
+          TARGET = datetime(2026, 11, 19, 22, 0, tzinfo=ZoneInfo("America/New_York"))
+          NOW = datetime.now(ZoneInfo("America/New_York"))
+
+          days = max(0, (TARGET.date() - NOW.date()).days)
+
+          W, H = 1200, 675
+          img = Image.new("RGB", (W, H), (45, 8, 38))
+          draw = ImageDraw.Draw(img)
+
+          # Fondo degradado
+          for x in range(W):
+              r = int(55 + x / W * 70)
+              g = int(8 + x / W * 8)
+              b = int(45 + x / W * 55)
+              draw.line((x, 0, x, H), fill=(r, g, b))
+
+          try:
+              title_font = ImageFont.truetype(
+                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 42
+              )
+              big_font = ImageFont.truetype(
+                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 105
+              )
+              small_font = ImageFont.truetype(
+                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30
+              )
+              date_font = ImageFont.truetype(
+                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 34
+              )
+          except:
+              title_font = big_font = small_font = date_font = None
+
+          # Encabezado
+          text = "GRAND THEFT AUTO VI"
+          box = draw.textbbox((0, 0), text, font=title_font)
+          draw.text(((W-(box[2]-box[0]))/2, 55), text, fill="white", font=title_font)
+
+          # Tarjeta tipo matrícula
+          plate_x, plate_y = 220, 150
+          plate_w, plate_h = 760, 350
+
+          draw.rounded_rectangle(
+              (plate_x, plate_y, plate_x+plate_w, plate_y+plate_h),
+              radius=35,
+              fill=(245, 242, 220),
+              outline=(255, 100, 180),
+              width=10
+          )
+
+          # Leonida
+          text = "LEONIDA"
+          box = draw.textbbox((0, 0), text, font=title_font)
+          draw.text(
+              (plate_x+(plate_w-(box[2]-box[0]))/2, plate_y+35),
+              text,
+              fill=(225, 55, 120),
+              font=title_font
+          )
+
+          # Días
+          text = f"{days} DÍAS"
+          box = draw.textbbox((0, 0), text, font=big_font)
+          draw.text(
+              (plate_x+(plate_w-(box[2]-box[0]))/2, plate_y+105),
+              text,
+              fill=(15, 15, 20),
+              font=big_font
+          )
+
+          # Goodtime State
+          text = "GOODTIME STATE"
+          box = draw.textbbox((0, 0), text, font=small_font)
+          draw.text(
+              (plate_x+(plate_w-(box[2]-box[0]))/2, plate_y+260),
+              text,
+              fill=(225, 55, 120),
+              font=small_font
+          )
+
+          # Fecha
+          text = "19 DE NOVIEMBRE DE 2026"
+          box = draw.textbbox((0, 0), text, font=date_font)
+          draw.text(
+              ((W-(box[2]-box[0]))/2, 550),
+              text,
+              fill="white",
+              font=date_font
+          )
+
+          # Barra inferior
+          draw.rounded_rectangle((210, 625, 990, 640), radius=8, fill=(120, 40, 100))
+          progress = max(0, min(1, days / 100))
+          draw.rounded_rectangle(
+              (210, 625, 210 + int(780 * (1-progress)), 640),
+              radius=8,
+              fill=(255, 90, 170)
+          )
+
+          img.save("gta6-countdown.png")
+
+          # Enviar a Discord
+          webhook = os.environ["DISCORD_WEBHOOK"]
+
+          message = f"⏳ **Faltan {days} días para GTA VI**"
+
+          with open("gta6-countdown.png", "rb") as f:
+              response = requests.post(
+                  webhook,
+                  data={"content": message},
+                  files={"file": ("gta6-countdown.png", f, "image/png")}
+              )
+
+          print(response.status_code)
+          print(response.text)
+          PY
+
+          python countdown.py
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
