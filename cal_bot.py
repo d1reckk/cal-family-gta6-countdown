@@ -14,12 +14,12 @@ from bs4 import BeautifulSoup
 
 
 # ============================================================
-# CAL BOT V11
+# CAL BOT V12
 # EDITOR DE NOTICIAS DE CAL FAMILY
 # ============================================================
 
 print("=" * 60)
-print("CAL BOT V11")
+print("CAL BOT V12")
 print("EDITOR DE NOTICIAS DE CAL FAMILY")
 print("=" * 60)
 
@@ -36,7 +36,6 @@ HISTORY_FILE = "seen_news.json"
 ROLE_ID = "1504921814759903343"
 
 MAX_HISTORY = 500
-
 MAX_NEWS_AGE_HOURS = 72
 
 RSS_URL = (
@@ -47,10 +46,11 @@ RSS_URL = (
     "&ceid=US:en"
 )
 
-# Modelos de respaldo.
+# Modelos Gemini actuales.
+# Se intenta primero el principal y después el respaldo.
 GEMINI_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite"
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite"
 ]
 
 
@@ -572,9 +572,6 @@ Eres CAL BOT, el editor de noticias de CAL FAMILY.
 CAL FAMILY es una comunidad dedicada principalmente a
 Grand Theft Auto VI.
 
-Tu función NO es publicar cualquier artículo relacionado
-con GTA VI.
-
 Tu función es actuar como un EDITOR HUMANO.
 
 Tu prioridad absoluta es:
@@ -601,7 +598,6 @@ DESCARTA cuando el artículo:
 - Repite información que ya está en el historial.
 - Habla de expectativas generales.
 - Habla de que GTA VI es popular.
-- Habla de que habrá impacto cultural.
 - Habla de que el juego será grande.
 - No proporciona información concreta.
 - No puede verificarse correctamente.
@@ -614,7 +610,7 @@ Es preferible no publicar nada antes que publicar
 información reciclada.
 
 ============================================================
-MUY IMPORTANTE
+ARTÍCULO NUEVO VS. ARTÍCULO NUEVO SOBRE UN EVENTO VIEJO
 ============================================================
 
 No confundas:
@@ -625,16 +621,13 @@ con:
 
 ARTÍCULO NUEVO SOBRE UNA NOTICIA VIEJA.
 
-Por ejemplo:
+Si Rockstar publica un vídeo, tráiler, anuncio o información
+y después aparecen muchos artículos reaccionando al mismo
+acontecimiento, esos artículos NO son automáticamente
+noticias nuevas.
 
-Si Rockstar publica un Extended Look y después aparecen
-10 artículos de diferentes medios reaccionando al vídeo,
-NO son 10 noticias.
-
-Son diferentes artículos sobre el mismo acontecimiento.
-
-Solo publica uno si otro artículo posterior aporta
-un DATO NUEVO que no estaba anteriormente disponible.
+Solo PUBLICA si el nuevo artículo aporta un dato concreto
+que anteriormente no estaba disponible.
 
 ============================================================
 FUENTES
@@ -643,13 +636,13 @@ FUENTES
 Una fuente secundaria puede utilizarse si aporta información
 nueva y verificable.
 
-Pero si solamente repite un rumor de otro medio:
+Pero si solamente repite un rumor:
 
 DESCARTA.
 
-Las opiniones de IGN, GameSpot, PC Gamer, etc. NO deben
-publicarse como noticia salvo que contengan información
-concreta nueva.
+Las opiniones de medios como IGN, GameSpot, PC Gamer,
+Kotaku, etc. no deben publicarse como noticia salvo que
+contengan información concreta nueva.
 
 ============================================================
 HISTORIAL
@@ -687,7 +680,7 @@ Determina si lo encontrado es:
 Nunca presentes opinión, rumor o especulación como hecho.
 
 ============================================================
-INFORMACIÓN OFICIAL
+NO INVENTAR
 ============================================================
 
 No inventes ni atribuyas a Rockstar Games o Take-Two
@@ -714,13 +707,13 @@ No inventes:
 DECISIÓN
 ============================================================
 
-Debes responder:
+Selecciona:
 
 PUBLICAR
 
 o
 
-DESCARTAR
+DESCARTAR.
 
 Solo selecciona PUBLICAR si el artículo aporta una
 novedad suficientemente importante para CAL FAMILY.
@@ -731,7 +724,7 @@ FORMATO JSON
 
 Devuelve exclusivamente JSON válido.
 
-Formato:
+Si PUBLICAR:
 
 {{
   "decision": "PUBLICAR",
@@ -741,7 +734,7 @@ Formato:
   "content": "Texto final"
 }}
 
-O:
+Si DESCARTAR:
 
 {{
   "decision": "DESCARTAR",
@@ -755,21 +748,16 @@ O:
 SI PUBLICAS
 ============================================================
 
-El texto debe estar en español.
+El texto debe:
 
-Debe ser profesional y natural.
-
-Debe tener aproximadamente entre 500 y 1100 caracteres.
-
-No inventes información.
-
-No incluyas el enlace.
-
-No menciones que eres una IA.
-
-No digas "según se espera" si no está respaldado.
-
-No rellenes el texto con información genérica.
+- Estar en español.
+- Ser profesional.
+- Ser natural.
+- Tener aproximadamente 500-1100 caracteres.
+- No inventar información.
+- No incluir el enlace.
+- No mencionar que eres una IA.
+- No rellenar con información genérica.
 
 Estructura:
 
@@ -786,13 +774,13 @@ Estructura:
 ⚠️ **Contexto**
 
 [Explicación sobre si es oficial, declaración,
-análisis o información de una fuente secundaria.]
+análisis o información secundaria.]
 
 ============================================================
 REGLA FINAL
 ============================================================
 
-Si el artículo no aporta información concreta nueva:
+Si no aporta información concreta nueva:
 
 DESCARTAR.
 
@@ -800,15 +788,15 @@ Si solamente vuelve a hablar del mismo acontecimiento:
 
 DESCARTAR.
 
-Si es un artículo de opinión:
+Si es opinión:
 
 DESCARTAR.
 
-Si es un rumor reciclado:
+Si es rumor reciclado:
 
 DESCARTAR.
 
-Si es una noticia realmente nueva y verificable:
+Si es noticia realmente nueva y verificable:
 
 PUBLICAR.
 """
@@ -858,6 +846,9 @@ for model in GEMINI_MODELS:
     }
 
 
+    model_success = False
+
+
     for attempt in range(3):
 
         try:
@@ -882,10 +873,12 @@ for model in GEMINI_MODELS:
             if gemini_response.status_code == 200:
 
                 gemini_result = gemini_response.json()
+                model_success = True
 
                 break
 
 
+            # Errores temporales.
             if gemini_response.status_code in (
                 429,
                 500,
@@ -907,6 +900,18 @@ for model in GEMINI_MODELS:
                 continue
 
 
+            # Si el modelo devuelve 404,
+            # pasamos directamente al modelo de respaldo.
+            if gemini_response.status_code == 404:
+
+                print(
+                    "Modelo no disponible. "
+                    "Pasando al siguiente modelo."
+                )
+
+                break
+
+
             print(
                 gemini_response.text[:2000]
             )
@@ -923,12 +928,14 @@ for model in GEMINI_MODELS:
 
             if attempt < 2:
 
+                wait_time = 5 * (attempt + 1)
+
                 time.sleep(
-                    5 * (attempt + 1)
+                    wait_time
                 )
 
 
-    if gemini_result is not None:
+    if model_success:
 
         break
 
@@ -940,7 +947,7 @@ for model in GEMINI_MODELS:
 if gemini_result is None:
 
     print("=" * 60)
-    print("ERROR: GEMINI NO RESPONDIÓ.")
+    print("ERROR: NINGÚN MODELO GEMINI RESPONDIÓ.")
     print("La noticia NO será publicada.")
     print("La noticia NO será guardada como publicada.")
     print("=" * 60)
@@ -1176,7 +1183,7 @@ final_message = (
     f"como borrador editorial. "
     f"Revisa la información antes de publicarlo "
     f"en #noticias.\n\n"
-    f"-# Cal Bot V11 · {date_text}"
+    f"-# Cal Bot V12 · {date_text}"
 )
 
 
@@ -1191,11 +1198,17 @@ if len(final_message) > 1950:
         "Recortando contenido..."
     )
 
-    fixed_length = len(
-        final_message
-    ) - len(ai_content)
+    fixed_length = (
+        len(final_message)
+        - len(ai_content)
+    )
 
-    allowed = 1950 - fixed_length - 10
+    allowed = (
+        1950
+        - fixed_length
+        - 10
+    )
+
 
     if allowed < 300:
 
@@ -1206,20 +1219,25 @@ if len(final_message) > 1950:
         raise SystemExit(0)
 
 
-    ai_content = ai_content[:allowed].rstrip()
+    ai_content = (
+        ai_content[:allowed]
+        .rstrip()
+    )
+
 
     final_message = (
         f"<@&{ROLE_ID}>\n\n"
         f"🧭 **{category}**\n\n"
         f"# {ai_title}\n\n"
         f"{ai_content}\n\n"
-        f"🔗 **Fuente original:** {final_source_url}\n\n"
+        f"🔗 **Fuente original:** "
+        f"{final_source_url}\n\n"
         f"⚠️ **REVISIÓN REQUERIDA**\n"
         f"Este contenido fue preparado por Cal Bot "
         f"como borrador editorial. "
-        f"Revisa la información antes de publicarlo "
-        f"en #noticias.\n\n"
-        f"-# Cal Bot V11 · {date_text}"
+        f"Revisa la información antes de "
+        f"publicarlo en #noticias.\n\n"
+        f"-# Cal Bot V12 · {date_text}"
     )
 
 
@@ -1268,7 +1286,7 @@ print(
 )
 
 
-# Discord webhook normalmente responde 204.
+# Discord webhook normalmente devuelve 204.
 if not discord_response.ok:
 
     print("=" * 60)
