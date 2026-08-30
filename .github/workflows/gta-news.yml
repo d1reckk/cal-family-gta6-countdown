@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 # ============================================================
-# EVITAR DOS EJECUCIONES DEL BOT AL MISMO TIEMPO
+# SOLO UNA EJECUCIÓN DEL WORKFLOW A LA VEZ
 # ============================================================
 
 concurrency:
@@ -30,9 +30,11 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # ============================================================
-      # DEPENDENCIAS
+      # INSTALAR DEPENDENCIAS
       # ============================================================
 
       - name: Install dependencies
@@ -40,10 +42,10 @@ jobs:
           pip install feedparser requests beautifulsoup4
 
       # ============================================================
-      # BUSCAR Y PROCESAR NOTICIA
+      # BUSCAR NOTICIA
       # ============================================================
 
-      - name: Find and analyze GTA VI news
+      - name: Find GTA VI news
         env:
           NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -59,6 +61,7 @@ jobs:
           import hashlib
           import re
           import difflib
+          import subprocess
 
           from bs4 import BeautifulSoup
           from datetime import datetime, timezone
@@ -68,9 +71,15 @@ jobs:
           # CONFIGURACIÓN
           # ============================================================
 
-          WEBHOOK = os.environ.get("NEWS_DRAFT_WEBHOOK", "").strip()
+          WEBHOOK = os.environ.get(
+              "NEWS_DRAFT_WEBHOOK",
+              ""
+          ).strip()
 
-          GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+          GEMINI_KEY = os.environ.get(
+              "GEMINI_API_KEY",
+              ""
+          ).strip()
 
           MODEL = "gemini-3.5-flash-lite"
 
@@ -89,6 +98,8 @@ jobs:
 
           HISTORY_FILE = "seen_news.json"
 
+          LOCK_DIR = ".news_locks"
+
           ROLE_ID = "1504921814759903343"
 
           MAX_HISTORY = 500
@@ -100,23 +111,37 @@ jobs:
 
           if not WEBHOOK:
 
-              print("ERROR: NEWS_DRAFT_WEBHOOK está vacío.")
+              print(
+                  "ERROR: NEWS_DRAFT_WEBHOOK está vacío."
+              )
 
               exit(1)
 
 
           if not GEMINI_KEY:
 
-              print("ERROR: GEMINI_API_KEY está vacío.")
+              print(
+                  "ERROR: GEMINI_API_KEY está vacío."
+              )
 
               exit(1)
+
+
+          # ============================================================
+          # CREAR DIRECTORIO DE LOCKS
+          # ============================================================
+
+          os.makedirs(
+              LOCK_DIR,
+              exist_ok=True
+          )
 
 
           # ============================================================
           # FUNCIONES
           # ============================================================
 
-          def normalize_text(text):
+          def normalize(text):
 
               text = text.lower()
 
@@ -141,11 +166,11 @@ jobs:
               return text.strip()
 
 
-          def title_similarity(a, b):
+          def similarity(a, b):
 
-              a = normalize_text(a)
+              a = normalize(a)
 
-              b = normalize_text(b)
+              b = normalize(b)
 
               if not a or not b:
 
@@ -158,50 +183,9 @@ jobs:
               ).ratio()
 
 
-          def word_set(text):
-
-              text = normalize_text(text)
-
-              words = text.split()
-
-              # eliminar palabras demasiado pequeñas
-              words = [
-                  word
-                  for word in words
-                  if len(word) >= 4
-              ]
-
-              return set(words)
-
-
-          def word_similarity(a, b):
-
-              set_a = word_set(a)
-
-              set_b = word_set(b)
-
-              if not set_a or not set_b:
-
-                  return 0.0
-
-              intersection = len(
-                  set_a.intersection(set_b)
-              )
-
-              union = len(
-                  set_a.union(set_b)
-              )
-
-              if union == 0:
-
-                  return 0.0
-
-              return intersection / union
-
-
           def content_hash(text):
 
-              normalized = normalize_text(text)
+              normalized = normalize(text)
 
               return hashlib.sha256(
                   normalized.encode("utf-8")
@@ -226,10 +210,6 @@ jobs:
 
               except Exception:
 
-                  print(
-                      "No se pudo leer el historial."
-                  )
-
                   history = []
 
           else:
@@ -237,34 +217,39 @@ jobs:
               history = []
 
 
-          # ============================================================
-          # COMPATIBILIDAD CON EL HISTORIAL ANTIGUO
-          # ============================================================
-
           if not isinstance(history, list):
 
               history = []
 
 
-          # Convertir hashes antiguos a registros
-          normalized_history = []
+          # ============================================================
+          # CONVERTIR HISTORIAL ANTIGUO
+          # ============================================================
+
+          converted = []
 
           for item in history:
 
               if isinstance(item, str):
 
-                  normalized_history.append({
+                  converted.append({
+
                       "id": item,
+
                       "title": "",
-                      "content_hash": ""
+
+                      "content_hash": "",
+
+                      "status": "published"
+
                   })
 
               elif isinstance(item, dict):
 
-                  normalized_history.append(item)
+                  converted.append(item)
 
 
-          history = normalized_history
+          history = converted
 
 
           # ============================================================
@@ -273,26 +258,32 @@ jobs:
 
           print("========================================")
 
-          print("BUSCANDO NOTICIAS NUEVAS DE GTA VI")
+          print("CAL BOT")
+
+          print("BUSCANDO NOTICIAS NUEVAS...")
 
           print("========================================")
 
 
-          feed = feedparser.parse(RSS_URL)
+          feed = feedparser.parse(
+              RSS_URL
+          )
 
 
           if not feed.entries:
 
-              print("No se encontraron noticias.")
+              print(
+                  "No se encontraron noticias."
+              )
 
               exit(0)
 
 
           # ============================================================
-          # BUSCAR CANDIDATO
+          # BUSCAR UNA SOLA NOTICIA
           # ============================================================
 
-          candidate = None
+          article = None
 
 
           for entry in feed.entries:
@@ -319,53 +310,149 @@ jobs:
 
 
               # --------------------------------------------------------
-              # MISMO ENLACE
+              # SI YA EXISTE EN HISTORIAL
               # --------------------------------------------------------
 
-              if any(
+              already_seen = any(
+
                   item.get("id") == news_id
+
                   for item in history
-              ):
+
+              )
+
+
+              if already_seen:
 
                   print(
-                      "IGNORADA: enlace ya procesado."
+                      "Ignorada: ya existe en historial."
                   )
 
                   continue
 
 
-              candidate = {
+              # --------------------------------------------------------
+              # LOCK PERMANENTE
+              # --------------------------------------------------------
+
+              lock_file = os.path.join(
+                  LOCK_DIR,
+                  f"{news_id}.lock"
+              )
+
+
+              if os.path.exists(lock_file):
+
+                  print(
+                      "Ignorada: noticia bloqueada."
+                  )
+
+                  continue
+
+
+              # --------------------------------------------------------
+              # ENCONTRADA
+              # --------------------------------------------------------
+
+              article = {
+
                   "id": news_id,
+
                   "title": title,
+
                   "link": link
+
               }
+
 
               break
 
 
-          if candidate is None:
+          # ============================================================
+          # NO HAY NOTICIA
+          # ============================================================
 
-              print("No hay noticias nuevas.")
+          if article is None:
+
+              print(
+                  "No hay noticias nuevas para publicar."
+              )
 
               exit(0)
 
 
-          title = candidate["title"]
+          title = article["title"]
 
-          link = candidate["link"]
+          link = article["link"]
 
-          news_id = candidate["id"]
+          news_id = article["id"]
 
 
           print("========================================")
 
-          print("CANDIDATA ENCONTRADA")
+          print("NOTICIA SELECCIONADA")
 
           print(title)
 
           print(link)
 
           print("========================================")
+
+
+          # ============================================================
+          # CREAR LOCK INMEDIATAMENTE
+          # ============================================================
+
+          lock_file = os.path.join(
+              LOCK_DIR,
+              f"{news_id}.lock"
+          )
+
+
+          # Exclusión mediante creación atómica
+          try:
+
+              fd = os.open(
+                  lock_file,
+                  os.O_CREAT |
+                  os.O_EXCL |
+                  os.O_WRONLY
+              )
+
+              with os.fdopen(
+                  fd,
+                  "w",
+                  encoding="utf-8"
+              ) as f:
+
+                  json.dump({
+
+                      "id": news_id,
+
+                      "title": title,
+
+                      "link": link,
+
+                      "created_at":
+                          datetime.now(
+                              timezone.utc
+                          ).isoformat()
+
+                  }, f, indent=2)
+
+
+          except FileExistsError:
+
+              print(
+                  "OTRA EJECUCIÓN YA TOMÓ ESTA NOTICIA."
+              )
+
+              exit(0)
+
+
+          print(
+              "LOCK CREADO."
+          )
 
 
           # ============================================================
@@ -404,19 +491,24 @@ jobs:
 
 
               print(
-                  f"Estado de la página: {page.status_code}"
+                  f"Estado de la página: "
+                  f"{page.status_code}"
               )
 
 
               if page.ok:
 
                   soup = BeautifulSoup(
+
                       page.text,
+
                       "html.parser"
+
                   )
 
 
                   for element in soup([
+
                       "script",
                       "style",
                       "noscript",
@@ -424,6 +516,7 @@ jobs:
                       "nav",
                       "footer",
                       "header"
+
                   ]):
 
                       element.decompose()
@@ -435,8 +528,11 @@ jobs:
                   for p in soup.find_all("p"):
 
                       text = p.get_text(
+
                           " ",
+
                           strip=True
+
                       )
 
 
@@ -456,28 +552,24 @@ jobs:
           except Exception as error:
 
               print(
-                  "No se pudo descargar "
-                  "el artículo."
+                  "No se pudo obtener "
+                  "el artículo completo."
               )
 
               print(error)
 
 
           # ============================================================
-          # DETECTAR ARTÍCULO RECICLADO
+          # COMPROBAR CONTENIDO RECICLADO
           # ============================================================
 
-          current_content_hash = content_hash(
+          current_hash = content_hash(
               article_text
           )
 
 
-          duplicate_found = False
+          recycled = False
 
-
-          # ============================================================
-          # COMPARACIÓN CONTRA HISTORIAL
-          # ============================================================
 
           for old in history:
 
@@ -493,85 +585,56 @@ jobs:
 
 
               # --------------------------------------------------------
-              # MISMO CONTENIDO
+              # CONTENIDO IDÉNTICO
               # --------------------------------------------------------
 
               if (
-                  current_content_hash
+
+                  current_hash
+
                   and
+
                   old_hash
+
                   and
-                  current_content_hash == old_hash
+
+                  current_hash == old_hash
+
               ):
 
-                  print(
-                      "IGNORADA: contenido idéntico "
-                      "a una noticia anterior."
-                  )
+                  recycled = True
 
-                  duplicate_found = True
+                  print(
+                      "DESCARTADA: contenido idéntico."
+                  )
 
                   break
 
 
               # --------------------------------------------------------
-              # TÍTULO CASI IDÉNTICO
+              # TÍTULO MUY PARECIDO
               # --------------------------------------------------------
 
               if old_title:
 
-                  similarity = title_similarity(
+                  score = similarity(
                       title,
                       old_title
                   )
 
 
-                  if similarity >= 0.88:
+                  if score >= 0.88:
+
+                      recycled = True
 
                       print(
-                          "IGNORADA: título demasiado "
-                          "similar a una noticia anterior."
+                          "DESCARTADA: título "
+                          "demasiado parecido."
                       )
 
                       print(
-                          f"Similitud: {similarity:.2f}"
+                          f"Similitud: {score:.2f}"
                       )
-
-                      duplicate_found = True
-
-                      break
-
-
-                  # ----------------------------------------------------
-                  # MISMA HISTORIA CON TÍTULO DIFERENTE
-                  # ----------------------------------------------------
-
-                  word_sim = word_similarity(
-                      title,
-                      old_title
-                  )
-
-
-                  if (
-                      similarity >= 0.72
-                      and
-                      word_sim >= 0.55
-                  ):
-
-                      print(
-                          "IGNORADA: posible noticia "
-                          "reciclada."
-                      )
-
-                      print(
-                          f"Título anterior: {old_title}"
-                      )
-
-                      print(
-                          f"Similitud: {similarity:.2f}"
-                      )
-
-                      duplicate_found = True
 
                       break
 
@@ -580,10 +643,7 @@ jobs:
           # SI ES RECICLADA
           # ============================================================
 
-          if duplicate_found:
-
-              # Guardar también esta URL para que no vuelva
-              # a analizarse en los siguientes ciclos.
+          if recycled:
 
               history.append({
 
@@ -591,13 +651,14 @@ jobs:
 
                   "title": title,
 
-                  "content_hash": current_content_hash,
+                  "content_hash": current_hash,
 
                   "status": "duplicate",
 
-                  "date": datetime.now(
-                      timezone.utc
-                  ).isoformat()
+                  "date":
+                      datetime.now(
+                          timezone.utc
+                      ).isoformat()
 
               })
 
@@ -606,16 +667,25 @@ jobs:
 
 
               with open(
+
                   HISTORY_FILE,
+
                   "w",
+
                   encoding="utf-8"
+
               ) as f:
 
                   json.dump(
+
                       history,
+
                       f,
+
                       indent=2,
+
                       ensure_ascii=False
+
                   )
 
 
@@ -632,57 +702,50 @@ jobs:
 
           if article_text:
 
-              source_content = article_text
+              source = article_text
 
           else:
 
-              source_content = (
-                  "No fue posible obtener el contenido "
-                  "completo del artículo."
+              source = (
+                  "No fue posible obtener "
+                  "el contenido completo."
               )
 
 
           # ============================================================
-          # PROMPT DE GEMINI
+          # PROMPT
           # ============================================================
 
           prompt = f"""
 
-          Eres el editor oficial de noticias de CAL FAMILY,
-          una comunidad dedicada exclusivamente a Grand Theft Auto VI.
+          Eres el editor de noticias de CAL FAMILY,
+          una comunidad dedicada a Grand Theft Auto VI.
 
-          Debes convertir el artículo proporcionado en un
-          BORRADOR profesional para Discord.
+          Convierte la información proporcionada
+          en un borrador profesional para Discord.
 
-          ============================================================
-          REGLA PRINCIPAL
-          ============================================================
+          REGLA ABSOLUTA:
 
-          NO INVENTES NADA.
+          NO INVENTES INFORMACIÓN.
 
-          Solo puedes afirmar información que aparezca
-          explícitamente en el título o contenido proporcionado.
-
-          No agregues contexto que no esté en la fuente.
+          Solo puedes utilizar información
+          que aparezca en el material proporcionado.
 
           No inventes:
 
-          - declaraciones de Rockstar Games
+          - declaraciones de Rockstar
           - fechas
           - cifras
-          - características
           - personajes
-          - mapas
+          - características
           - precios
           - duración
+          - mapas
           - rumores
           - filtraciones
-          - anuncios
-          - información técnica
 
-          Si la fuente no confirma algo,
-          NO lo presentes como confirmado.
-
+          Si algo no está confirmado,
+          debes indicarlo claramente.
 
           ============================================================
           CLASIFICACIÓN
@@ -692,20 +755,14 @@ jobs:
 
           🧭 **Noticias**
 
-          cuando la información sea factual.
-
+          para información factual.
 
           Usa:
 
           🧭 **Análisis**
 
-          cuando el artículo sea principalmente
-          interpretación, opinión o análisis.
-
-
-          Si es rumor, especulación o información
-          no confirmada, debes dejarlo extremadamente claro.
-
+          para opiniones, interpretaciones
+          o análisis de un medio.
 
           ============================================================
           FORMATO
@@ -715,72 +772,68 @@ jobs:
 
           # [Título atractivo en español]
 
-          [Resumen claro basado únicamente
-          en la fuente.]
+          [Resumen claro.]
 
           **El dato que lo pone en perspectiva**
 
-          [Dato o contexto que aparezca
-          realmente en la fuente.]
+          [Dato real de la fuente.]
 
           **La señal que más dice**
 
-          [El detalle más relevante
-          que aparezca en el artículo.]
+          [Detalle importante.]
 
           **Por qué importa**
 
-          [Explica su relevancia sin agregar
-          información externa.]
-
+          [Por qué es relevante.]
 
           Si corresponde:
 
           ⚠️ **Esto no es un anuncio oficial ni una filtración.**
 
-          [Explica exactamente qué es
-          la información y quién la publicó.]
-
+          [Explicación.]
 
           ============================================================
-          REGLAS DE REDACCIÓN
+          ESTILO
           ============================================================
 
-          - Español natural.
-          - Profesional.
-          - Claro.
-          - Directo.
-          - Estilo de medio especializado en GTA VI.
-          - No exageres.
-          - No repitas la misma idea.
-          - No inventes contexto.
-          - No uses demasiados emojis.
-          - No pongas enlaces.
-          - No menciones que eres una IA.
-          - No escribas explicaciones fuera del artículo.
-          - Debe quedar listo para Discord.
+          Español natural.
 
+          Profesional.
+
+          Claro.
+
+          Atractivo.
+
+          No exageres.
+
+          No repitas información.
+
+          No inventes contexto.
+
+          No utilices demasiados emojis.
+
+          No pongas enlaces.
+
+          No menciones que eres una IA.
+
+          Genera únicamente el texto final.
 
           ============================================================
-          ARTÍCULO ORIGINAL
+          FUENTE
           ============================================================
 
           TÍTULO:
 
           {title}
 
-
           ENLACE:
 
           {link}
 
-
           CONTENIDO:
 
-          {source_content}
+          {source}
 
-
-          Genera únicamente el borrador final.
           """
 
 
@@ -788,11 +841,9 @@ jobs:
           # GEMINI
           # ============================================================
 
-          print("========================================")
-
-          print("ENVIANDO NOTICIA A GEMINI")
-
-          print("========================================")
+          print(
+              "Enviando noticia a Gemini..."
+          )
 
 
           gemini_payload = {
@@ -817,6 +868,8 @@ jobs:
 
               "generationConfig": {
 
+                  "temperature": 0.2,
+
                   "maxOutputTokens": 1400
 
               }
@@ -829,11 +882,16 @@ jobs:
               GEMINI_URL,
 
               params={
+
                   "key": GEMINI_KEY
+
               },
 
               headers={
-                  "Content-Type": "application/json"
+
+                  "Content-Type":
+                      "application/json"
+
               },
 
               json=gemini_payload,
@@ -845,17 +903,20 @@ jobs:
 
           if not response.ok:
 
-              print("========================================")
-
-              print("ERROR DE GEMINI")
-
               print(
-                  f"HTTP {response.status_code}"
+                  "ERROR DE GEMINI"
               )
 
-              print(response.text)
+              print(
+                  response.status_code
+              )
 
-              print("========================================")
+              print(
+                  response.text
+              )
+
+              # Mantener lock para impedir
+              # duplicados accidentales.
 
               exit(1)
 
@@ -864,7 +925,7 @@ jobs:
 
 
           # ============================================================
-          # EXTRAER RESPUESTA
+          # EXTRAER TEXTO
           # ============================================================
 
           try:
@@ -882,8 +943,7 @@ jobs:
           except Exception:
 
               print(
-                  "No se pudo obtener la respuesta "
-                  "de Gemini."
+                  "ERROR: respuesta inválida de Gemini."
               )
 
               print(
@@ -900,53 +960,10 @@ jobs:
           if not ai_text:
 
               print(
-                  "Gemini devolvió una respuesta vacía."
+                  "Gemini devolvió texto vacío."
               )
 
               exit(1)
-
-
-          # ============================================================
-          # GUARDAR EN HISTORIAL
-          # ============================================================
-
-          history.append({
-
-              "id": news_id,
-
-              "title": title,
-
-              "content_hash": current_content_hash,
-
-              "status": "published",
-
-              "date": datetime.now(
-                  timezone.utc
-              ).isoformat()
-
-          })
-
-
-          history = history[-MAX_HISTORY:]
-
-
-          with open(
-              HISTORY_FILE,
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              json.dump(
-                  history,
-                  f,
-                  indent=2,
-                  ensure_ascii=False
-              )
-
-
-          print(
-              "Noticia guardada en el historial."
-          )
 
 
           # ============================================================
@@ -959,7 +976,7 @@ jobs:
 
 
           # ============================================================
-          # MENSAJE FINAL
+          # MENSAJE DISCORD
           # ============================================================
 
           final_message = (
@@ -988,15 +1005,8 @@ jobs:
 
 
           # ============================================================
-          # DISCORD
+          # ENVIAR A DISCORD
           # ============================================================
-
-          print("========================================")
-
-          print("ENVIANDO UNA SOLA NOTICIA A DISCORD")
-
-          print("========================================")
-
 
           discord_payload = {
 
@@ -1007,12 +1017,19 @@ jobs:
               "allowed_mentions": {
 
                   "roles": [
+
                       ROLE_ID
+
                   ]
 
               }
 
           }
+
+
+          print(
+              "Enviando a Discord..."
+          )
 
 
           discord_response = requests.post(
@@ -1028,24 +1045,83 @@ jobs:
 
           if not discord_response.ok:
 
-              print("========================================")
-
-              print("ERROR DE DISCORD")
-
               print(
-                  f"HTTP {discord_response.status_code}"
+                  "ERROR DE DISCORD"
               )
 
-              print(discord_response.text)
+              print(
+                  discord_response.status_code
+              )
 
-              print("========================================")
+              print(
+                  discord_response.text
+              )
+
+              # NO eliminar el lock.
+              # Esto evita que el mismo artículo
+              # vuelva a enviarse automáticamente.
 
               exit(1)
 
 
+          # ============================================================
+          # GUARDAR HISTORIAL
+          # ============================================================
+
+          history.append({
+
+              "id": news_id,
+
+              "title": title,
+
+              "content_hash": current_hash,
+
+              "status": "published",
+
+              "date":
+                  datetime.now(
+                      timezone.utc
+                  ).isoformat()
+
+          })
+
+
+          history = history[-MAX_HISTORY:]
+
+
+          with open(
+
+              HISTORY_FILE,
+
+              "w",
+
+              encoding="utf-8"
+
+          ) as f:
+
+              json.dump(
+
+                  history,
+
+                  f,
+
+                  indent=2,
+
+                  ensure_ascii=False
+
+              )
+
+
+          print(
+              "Historial actualizado."
+          )
+
+
           print("========================================")
 
-          print("NOTICIA PUBLICADA CORRECTAMENTE")
+          print(
+              "NOTICIA PUBLICADA UNA SOLA VEZ"
+          )
 
           print("========================================")
 
@@ -1054,10 +1130,10 @@ jobs:
 
 
       # ============================================================
-      # GUARDAR HISTORIAL
+      # GUARDAR HISTORIAL Y LOCK
       # ============================================================
 
-      - name: Save news history
+      - name: Save news history and locks
         run: |
 
           git config user.name "Cal Bot"
@@ -1065,16 +1141,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
 
-          git add seen_news.json
+          git add seen_news.json .news_locks
 
 
           if git diff --cached --quiet; then
 
-            echo "No hay cambios en el historial."
+            echo "No hay cambios que guardar."
 
           else
 
-            git commit -m "Update GTA VI news history"
+            git commit -m "Cal Bot: update GTA VI news history"
 
             git push
 
