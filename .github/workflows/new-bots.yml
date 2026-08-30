@@ -16,15 +16,73 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Find project files
+        shell: bash
         run: |
+          set -e
+
+          echo "=== REPOSITORY ==="
+          pwd
+
+          echo "=== FILES ==="
+          find . -maxdepth 5 -type f | sort
+
+          echo "=== SEARCHING requirements.txt ==="
+          REQUIREMENTS_FILE="$(find . -type f -name 'requirements.txt' -print -quit)"
+
+          if [ -z "$REQUIREMENTS_FILE" ]; then
+            echo "ERROR: requirements.txt no encontrado."
+            exit 1
+          fi
+
+          echo "requirements.txt encontrado en:"
+          echo "$REQUIREMENTS_FILE"
+
+          echo "REQUIREMENTS_FILE=$REQUIREMENTS_FILE" >> "$GITHUB_ENV"
+
+          echo "=== SEARCHING cal_bot.py ==="
+          BOT_FILE="$(find . -type f -name 'cal_bot.py' -print -quit)"
+
+          if [ -z "$BOT_FILE" ]; then
+            echo "ERROR: cal_bot.py no encontrado."
+            exit 1
+          fi
+
+          echo "cal_bot.py encontrado en:"
+          echo "$BOT_FILE"
+
+          echo "BOT_FILE=$BOT_FILE" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -e
+
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install -r "$REQUIREMENTS_FILE"
+
+      - name: Verify Python syntax
+        shell: bash
+        run: |
+          set -e
+
+          echo "Verificando sintaxis de:"
+          echo "$BOT_FILE"
+
+          python -m py_compile "$BOT_FILE"
+
+          echo "PYTHON SYNTAX OK"
 
       - name: Run CAL Bot
         env:
           NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DISCORD_ROLE_ID: ${{ secrets.DISCORD_ROLE_ID }}
+        shell: bash
         run: |
-          python cal_bot.py
+          set -e
+
+          echo "Ejecutando:"
+          echo "$BOT_FILE"
+
+          python "$BOT_FILE"
