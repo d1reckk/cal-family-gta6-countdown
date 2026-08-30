@@ -1,196 +1,91 @@
 name: GTA VI News Bot
 
 on:
-workflow_dispatch:
-
-schedule:
-# Cada hora, en el minuto 0
-- cron: "0 * * * *"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"
 
 permissions:
-contents: write
-
-# Evita que dos ejecuciones del bot trabajen al mismo tiempo.
+  contents: write
 
 concurrency:
-group: gta-vi-news-bot
-cancel-in-progress: false
+  group: gta-vi-news-bot
+  cancel-in-progress: false
 
 jobs:
-news-bot:
-runs-on: ubuntu-latest
+  news-bot:
+    runs-on: ubuntu-latest
 
-```
-steps:
-  # ============================================================
-  # CHECKOUT
-  # ============================================================
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-  - name: Checkout repository
-    uses: actions/checkout@v4
-    with:
-      fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
 
-  # ============================================================
-  # PYTHON
-  # ============================================================
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-  - name: Set up Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: "3.12"
-      cache: "pip"
-      cache-dependency-path: requirements.txt
+      - name: Verify bot file
+        run: |
+          echo "========== BOT FILE =========="
+          pwd
+          python --version
+          test -f cal_bot.py
+          head -n 20 cal_bot.py
 
-  # ============================================================
-  # DEPENDENCIES
-  # ============================================================
+          echo "========== SYNTAX =========="
+          python -m py_compile cal_bot.py
 
-  - name: Install dependencies
-    shell: bash
-    run: |
-      set -e
+      - name: Verify secrets
+        env:
+          NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$NEWS_DRAFT_WEBHOOK" ]; then
+            echo "ERROR: NEWS_DRAFT_WEBHOOK is missing."
+            exit 1
+          fi
 
-      python -m pip install --upgrade pip
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "ERROR: GEMINI_API_KEY is missing."
+            exit 1
+          fi
 
-      if [ -f requirements.txt ]; then
-        pip install -r requirements.txt
-      else
-        pip install \
-          "feedparser>=6.0,<7" \
-          "requests>=2.32,<3" \
-          "beautifulsoup4>=4.12,<5"
-      fi
+          echo "Required secrets are configured."
 
-  # ============================================================
-  # VERIFY
-  # ============================================================
+      - name: Run bot
+        env:
+          NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DISCORD_ROLE_ID: ${{ secrets.DISCORD_ROLE_ID }}
+        run: |
+          python cal_bot.py
 
-  - name: Verify repository
-    shell: bash
-    run: |
-      set -e
+      - name: Save news history
+        if: always()
+        run: |
+          if [ ! -f seen_news.json ]; then
+            echo "seen_news.json does not exist."
+            exit 0
+          fi
 
-      echo "========================================"
-      echo "GTA VI NEWS BOT"
-      echo "========================================"
+          if git diff --quiet -- seen_news.json; then
+            echo "No history changes to commit."
+            exit 0
+          fi
 
-      echo "Working directory:"
-      pwd
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      echo
-      echo "Python:"
-      python --version
-
-      echo
-      echo "Git:"
-      git --version
-
-      echo
-      echo "Repository files:"
-      ls -la
-
-      echo
-      echo "========================================"
-      echo "VERIFYING BOT"
-      echo "========================================"
-
-      test -f cal_bot.py
-
-      echo "cal_bot.py found."
-
-      echo
-      echo "First 20 lines:"
-      head -n 20 cal_bot.py
-
-      echo
-      echo "========================================"
-      echo "PYTHON SYNTAX"
-      echo "========================================"
-
-      python -m py_compile cal_bot.py
-
-      echo "Syntax OK."
-
-  # ============================================================
-  # VERIFY SECRETS
-  # ============================================================
-
-  - name: Verify required secrets
-    shell: bash
-    env:
-      NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-    run: |
-      set -e
-
-      if [ -z "$NEWS_DRAFT_WEBHOOK" ]; then
-        echo "ERROR: NEWS_DRAFT_WEBHOOK secret is missing."
-        exit 1
-      fi
-
-      if [ -z "$GEMINI_API_KEY" ]; then
-        echo "ERROR: GEMINI_API_KEY secret is missing."
-        exit 1
-      fi
-
-      echo "Required secrets are configured."
-
-  # ============================================================
-  # RUN BOT
-  # ============================================================
-
-  - name: Run GTA VI News Bot
-    env:
-      NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-
-      # Opcional:
-      # Si no creas este secret, V20 utiliza su valor por defecto.
-      DISCORD_ROLE_ID: ${{ secrets.DISCORD_ROLE_ID }}
-
-    run: |
-      set -e
-
-      echo "Starting CAL Bot V20..."
-
-      python cal_bot.py
-
-      echo "CAL Bot finished."
-
-  # ============================================================
-  # SAVE HISTORY
-  # ============================================================
-
-  - name: Save news history
-    if: always()
-    shell: bash
-    run: |
-      set -e
-
-      if [ ! -f seen_news.json ]; then
-        echo "seen_news.json does not exist."
-        echo "Nothing to save."
-        exit 0
-      fi
-
-      if git diff --quiet -- seen_news.json; then
-        echo "No history changes to commit."
-        exit 0
-      fi
-
-      echo "History changed."
-
-      git config user.name "github-actions[bot]"
-      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      git add seen_news.json
-
-      git commit -m "Update news history"
-
-      # Refresca la rama antes de hacer push por si hubo
-      # cambios entre el checkout y este momento.
-      git pull --rebase origin "${GITHUB_REF_NAME}"
-
-      git push origin "HEAD:${GITHUB_REF_NAME}"
-```
+          git add seen_news.json
+          git commit -m "Update news history"
+          git push
