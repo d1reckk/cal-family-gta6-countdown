@@ -20,22 +20,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Check required files
+      - name: Check files
         run: |
-          echo "Checking repository files..."
+          pwd
           ls -la
-
-          if [ ! -f requirements.txt ]; then
-            echo "ERROR: requirements.txt not found"
-            exit 1
-          fi
-
-          if [ ! -f cal_bot.py ]; then
-            echo "ERROR: cal_bot.py not found"
-            exit 1
-          fi
-
-          echo "Required files found."
+          test -f requirements.txt
+          test -f cal_bot.py
 
       - name: Install dependencies
         run: |
@@ -45,23 +35,6 @@ jobs:
       - name: Check Python syntax
         run: |
           python -m py_compile cal_bot.py
-
-      - name: Verify secrets
-        env:
-          NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          if [ -z "$NEWS_DRAFT_WEBHOOK" ]; then
-            echo "ERROR: NEWS_DRAFT_WEBHOOK is missing"
-            exit 1
-          fi
-
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo "ERROR: GEMINI_API_KEY is missing"
-            exit 1
-          fi
-
-          echo "Secrets OK."
 
       - name: Run bot
         env:
