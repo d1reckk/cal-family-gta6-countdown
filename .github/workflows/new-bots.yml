@@ -9,10 +9,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: gta-vi-news-bot
-  cancel-in-progress: false
-
 jobs:
   news-bot:
     runs-on: ubuntu-latest
@@ -20,33 +16,24 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Check repository files
+      - name: Check files
         run: |
-          echo "========== CURRENT DIRECTORY =========="
-          pwd
+          echo "Files in repository:"
+          ls -la
+          echo "Checking required files..."
 
-          echo "========== ROOT FILES =========="
-          find . -maxdepth 2 -type f | sort
-
-          echo "========== REQUIREMENTS =========="
-          if [ -f requirements.txt ]; then
-            echo "requirements.txt FOUND"
-            cat requirements.txt
-          else
-            echo "ERROR: requirements.txt NOT FOUND"
+          test -f requirements.txt || {
+            echo "ERROR: requirements.txt not found"
             exit 1
-          fi
+          }
 
-          echo "========== BOT =========="
-          if [ -f cal_bot.py ]; then
-            echo "cal_bot.py FOUND"
-          else
-            echo "ERROR: cal_bot.py NOT FOUND"
+          test -f cal_bot.py || {
+            echo "ERROR: cal_bot.py not found"
             exit 1
-          fi
+          }
+
+          echo "All required files found."
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -58,7 +45,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Verify bot syntax
+      - name: Check Python syntax
         run: |
           python -m py_compile cal_bot.py
 
@@ -67,15 +54,15 @@ jobs:
           NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          if [ -z "$NEWS_DRAFT_WEBHOOK" ]; then
-            echo "ERROR: NEWS_DRAFT_WEBHOOK is missing."
+          test -n "$NEWS_DRAFT_WEBHOOK" || {
+            echo "ERROR: NEWS_DRAFT_WEBHOOK is missing"
             exit 1
-          fi
+          }
 
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo "ERROR: GEMINI_API_KEY is missing."
+          test -n "$GEMINI_API_KEY" || {
+            echo "ERROR: GEMINI_API_KEY is missing"
             exit 1
-          fi
+          }
 
           echo "Required secrets are configured."
 
@@ -91,12 +78,12 @@ jobs:
         if: always()
         run: |
           if [ ! -f seen_news.json ]; then
-            echo "seen_news.json does not exist."
+            echo "No seen_news.json to save."
             exit 0
           fi
 
           if git diff --quiet -- seen_news.json; then
-            echo "No history changes to commit."
+            echo "No history changes."
             exit 0
           fi
 
