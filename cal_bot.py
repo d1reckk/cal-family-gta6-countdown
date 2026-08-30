@@ -29,6 +29,7 @@ from bs4 import BeautifulSoup
 #   información nueva y sustancial.
 # ================================================================
 
+import os  # Explicit guard: required for GitHub Actions environment variables
 WEBHOOK = os.environ.get("NEWS_DRAFT_WEBHOOK", "").strip()
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
