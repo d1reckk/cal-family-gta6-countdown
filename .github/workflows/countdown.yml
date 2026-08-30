@@ -15,108 +15,420 @@ jobs:
           pip install pillow
 
           python - <<'PY'
-          from PIL import Image, ImageDraw, ImageFont
+          from PIL import Image, ImageDraw, ImageFont, ImageFilter
           from datetime import datetime
           from zoneinfo import ZoneInfo
+          import random
+          import math
+
+          # ============================================================
+          # CONFIGURACIÓN DEL CONTADOR
+          # ============================================================
 
           TZ = ZoneInfo("America/New_York")
-          release = datetime(2026, 11, 19, 0, 0, 0, tzinfo=TZ)
-          now = datetime.now(TZ)
 
+          release = datetime(
+              2026, 11, 19, 0, 0, 0,
+              tzinfo=TZ
+          )
+
+          now = datetime.now(TZ)
           remaining = release - now
 
           days = max(remaining.days, 0)
 
+          # ============================================================
+          # CANVAS
+          # ============================================================
+
           W, H = 1280, 720
 
-          img = Image.new("RGB", (W, H), (28, 7, 35))
+          img = Image.new("RGB", (W, H))
+          pixels = img.load()
+
+          # ============================================================
+          # FONDO VICE CITY / SUNSET NEÓN
+          # ============================================================
+
+          top = (18, 8, 38)
+          middle = (77, 14, 67)
+          bottom = (236, 74, 126)
+
+          for y in range(H):
+              t = y / (H - 1)
+
+              if t < 0.55:
+                  p = t / 0.55
+
+                  r = int(top[0] + (middle[0] - top[0]) * p)
+                  g = int(top[1] + (middle[1] - top[1]) * p)
+                  b = int(top[2] + (middle[2] - top[2]) * p)
+
+              else:
+                  p = (t - 0.55) / 0.45
+
+                  r = int(middle[0] + (bottom[0] - middle[0]) * p)
+                  g = int(middle[1] + (bottom[1] - middle[1]) * p)
+                  b = int(middle[2] + (bottom[2] - middle[2]) * p)
+
+              for x in range(W):
+                  pixels[x, y] = (r, g, b)
+
           draw = ImageDraw.Draw(img)
 
-          # Degradado rosa/morado
-          for y in range(H):
-              t = y / H
-              r = int(35 + 95 * t)
-              g = int(8 + 8 * t)
-              b = int(48 + 45 * t)
-              draw.line((0, y, W, y), fill=(r, g, b))
+          # ============================================================
+          # ESTRELLAS
+          # ============================================================
 
-          # Luces decorativas
-          for x, y, radius in [
-              (120, 100, 150),
-              (1160, 120, 170),
-              (80, 620, 180),
-              (1200, 620, 200)
-          ]:
+          random.seed(6)
+
+          for _ in range(130):
+              x = random.randint(20, W - 20)
+              y = random.randint(15, 300)
+
+              radius = random.choice([1, 1, 1, 2])
+
               draw.ellipse(
-                  (x-radius, y-radius, x+radius, y+radius),
-                  fill=(115, 25, 105)
+                  (
+                      x - radius,
+                      y - radius,
+                      x + radius,
+                      y + radius
+                  ),
+                  fill=(255, 220, 235)
               )
 
-          font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+          # ============================================================
+          # SOL / GLOW DEL HORIZONTE
+          # ============================================================
 
-          title = ImageFont.truetype(font_path, 52)
-          subtitle = ImageFont.truetype(font_path, 32)
-          huge = ImageFont.truetype(font_path, 150)
-          days_font = ImageFont.truetype(font_path, 48)
-          small = ImageFont.truetype(font_path, 25)
+          glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+          glow_draw = ImageDraw.Draw(glow)
 
-          # Título
-          draw.text(
-              (W//2, 55),
-              "GRAND THEFT AUTO VI",
-              font=title,
-              fill="white",
-              anchor="ma"
+          cx = W // 2
+          cy = 485
+
+          for radius in range(230, 5, -5):
+              alpha = int(2 + (230 - radius) * 0.12)
+
+              glow_draw.ellipse(
+                  (
+                      cx - radius,
+                      cy - radius,
+                      cx + radius,
+                      cy + radius
+                  ),
+                  fill=(255, 125, 150, min(alpha, 55))
+              )
+
+          glow = glow.filter(ImageFilter.GaussianBlur(25))
+          img = Image.alpha_composite(img.convert("RGBA"), glow)
+
+          draw = ImageDraw.Draw(img)
+
+          # ============================================================
+          # SOL
+          # ============================================================
+
+          draw.ellipse(
+              (
+                  cx - 105,
+                  cy - 105,
+                  cx + 105,
+                  cy + 105
+              ),
+              fill=(255, 177, 139, 235)
           )
 
-          # Tarjeta central
-          card = (170, 175, 1110, 570)
+          # Líneas horizontales sobre el sol
+          for offset in range(-65, 70, 18):
+              draw.rectangle(
+                  (
+                      cx - 110,
+                      cy + offset,
+                      cx + 110,
+                      cy + offset + 6
+                  ),
+                  fill=(236, 74, 126, 170)
+              )
 
+          # ============================================================
+          # HORIZONTE
+          # ============================================================
+
+          horizon_y = 540
+
+          draw.rectangle(
+              (0, horizon_y, W, H),
+              fill=(22, 7, 27, 210)
+          )
+
+          # ============================================================
+          # PALMERAS DECORATIVAS
+          # ============================================================
+
+          def palm(draw, x, base_y, height, side=1):
+              trunk_color = (20, 8, 28, 235)
+
+              top_x = x + int(18 * side)
+              top_y = base_y - height
+
+              points = [
+                  (x - 8, base_y),
+                  (x + 5, base_y),
+                  (top_x + 5, top_y),
+                  (top_x - 8, top_y)
+              ]
+
+              draw.polygon(points, fill=trunk_color)
+
+              # Hojas
+              leaf_color = (17, 7, 25, 240)
+
+              for angle in [-65, -40, -20, 5, 25, 45, 70]:
+                  rad = math.radians(angle)
+
+                  length = 105
+
+                  end_x = top_x + int(math.cos(rad) * length)
+                  end_y = top_y + int(math.sin(rad) * length * 0.55)
+
+                  draw.line(
+                      (top_x, top_y, end_x, end_y),
+                      fill=leaf_color,
+                      width=7
+                  )
+
+          palm(draw, 70, 700, 280, 1)
+          palm(draw, 1210, 700, 300, -1)
+
+          # ============================================================
+          # FUENTES
+          # ============================================================
+
+          font_regular = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+          font_bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+          title_font = ImageFont.truetype(
+              font_bold,
+              58
+          )
+
+          leonida_font = ImageFont.truetype(
+              font_bold,
+              31
+          )
+
+          number_font = ImageFont.truetype(
+              font_bold,
+              170
+          )
+
+          days_font = ImageFont.truetype(
+              font_bold,
+              45
+          )
+
+          date_font = ImageFont.truetype(
+              font_bold,
+              25
+          )
+
+          # ============================================================
+          # TÍTULO
+          # ============================================================
+
+          title = "GRAND THEFT AUTO VI"
+
+          # Glow del título
+          title_glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+          glow_draw = ImageDraw.Draw(title_glow)
+
+          glow_draw.text(
+              (W // 2, 52),
+              title,
+              font=title_font,
+              anchor="ma",
+              fill=(255, 80, 170, 150),
+              stroke_width=3
+          )
+
+          title_glow = title_glow.filter(
+              ImageFilter.GaussianBlur(12)
+          )
+
+          img = Image.alpha_composite(img, title_glow)
+          draw = ImageDraw.Draw(img)
+
+          draw.text(
+              (W // 2, 52),
+              title,
+              font=title_font,
+              anchor="ma",
+              fill=(255, 250, 252),
+              stroke_width=2,
+              stroke_fill=(255, 105, 175)
+          )
+
+          # ============================================================
+          # TARJETA CENTRAL
+          # ============================================================
+
+          card_left = 150
+          card_top = 175
+          card_right = 1130
+          card_bottom = 590
+
+          # Sombra
+          shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+          shadow_draw = ImageDraw.Draw(shadow)
+
+          shadow_draw.rounded_rectangle(
+              (
+                  card_left + 10,
+                  card_top + 15,
+                  card_right + 10,
+                  card_bottom + 15
+              ),
+              radius=48,
+              fill=(0, 0, 0, 145)
+          )
+
+          shadow = shadow.filter(
+              ImageFilter.GaussianBlur(18)
+          )
+
+          img = Image.alpha_composite(img, shadow)
+          draw = ImageDraw.Draw(img)
+
+          # Glow exterior
+          glow_card = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+          glow_card_draw = ImageDraw.Draw(glow_card)
+
+          glow_card_draw.rounded_rectangle(
+              (
+                  card_left - 5,
+                  card_top - 5,
+                  card_right + 5,
+                  card_bottom + 5
+              ),
+              radius=50,
+              outline=(255, 72, 170, 150),
+              width=14
+          )
+
+          glow_card = glow_card.filter(
+              ImageFilter.GaussianBlur(12)
+          )
+
+          img = Image.alpha_composite(img, glow_card)
+          draw = ImageDraw.Draw(img)
+
+          # Tarjeta
           draw.rounded_rectangle(
-              card,
+              (
+                  card_left,
+                  card_top,
+                  card_right,
+                  card_bottom
+              ),
               radius=45,
-              fill=(247, 242, 225),
-              outline=(255, 100, 180),
-              width=9
+              fill=(249, 244, 228, 255),
+              outline=(255, 105, 180, 255),
+              width=8
           )
 
+          # ============================================================
           # LEONIDA
+          # ============================================================
+
           draw.text(
-              (W//2, 220),
+              (W // 2, 218),
               "LEONIDA",
-              font=subtitle,
-              fill=(220, 55, 125),
-              anchor="ma"
+              font=leonida_font,
+              anchor="ma",
+              fill=(214, 53, 119)
           )
 
-          # Número de días
-          draw.text(
-              (W//2, 355),
-              str(days),
-              font=huge,
-              fill=(20, 18, 22),
-              anchor="mm"
+          # Línea decorativa
+          draw.line(
+              (
+                  W // 2 - 135,
+                  250,
+                  W // 2 + 135,
+                  250
+              ),
+              fill=(230, 82, 140),
+              width=3
           )
 
-          # DAYS
+          # ============================================================
+          # NÚMERO
+          # ============================================================
+
+          number = str(days)
+
+          # Glow del número
+          number_glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+          number_draw = ImageDraw.Draw(number_glow)
+
+          number_draw.text(
+              (W // 2, 355),
+              number,
+              font=number_font,
+              anchor="mm",
+              fill=(220, 50, 130, 130)
+          )
+
+          number_glow = number_glow.filter(
+              ImageFilter.GaussianBlur(14)
+          )
+
+          img = Image.alpha_composite(img, number_glow)
+          draw = ImageDraw.Draw(img)
+
           draw.text(
-              (W//2, 455),
+              (W // 2, 355),
+              number,
+              font=number_font,
+              anchor="mm",
+              fill=(25, 19, 27),
+              stroke_width=2,
+              stroke_fill=(25, 19, 27)
+          )
+
+          # ============================================================
+          # DÍAS
+          # ============================================================
+
+          draw.text(
+              (W // 2, 455),
               "DÍAS",
               font=days_font,
-              fill=(220, 55, 125),
-              anchor="mm"
+              anchor="mm",
+              fill=(214, 53, 119)
           )
 
-          # Fecha
+          # ============================================================
+          # FECHA
+          # ============================================================
+
           draw.text(
-              (W//2, 660),
+              (W // 2, 660),
               "19 DE NOVIEMBRE DE 2026",
-              font=small,
-              fill="white",
-              anchor="mm"
+              font=date_font,
+              anchor="mm",
+              fill=(255, 245, 250, 255)
           )
 
-          img.save("gta6-countdown.png")
+          # ============================================================
+          # GUARDAR
+          # ============================================================
+
+          img.convert("RGB").save(
+              "gta6-countdown.png",
+              quality=95
+          )
 
           with open("days.txt", "w") as f:
               f.write(str(days))
@@ -142,7 +454,11 @@ jobs:
           )
 
           with open("payload.json", "w") as f:
-              json.dump({"content": content}, f, ensure_ascii=False)
+              json.dump(
+                  {"content": content},
+                  f,
+                  ensure_ascii=False
+              )
 
           print(content)
           PY
@@ -151,13 +467,15 @@ jobs:
 
             echo "Creando el mensaje inicial..."
 
-            RESPONSE=$(curl -sS -X POST "${DISCORD_WEBHOOK}?wait=true" \
+            RESPONSE=$(curl -sS -X POST \
+              "${DISCORD_WEBHOOK}?wait=true" \
               -F "file1=@gta6-countdown.png" \
               -F "payload_json=<payload.json")
 
             echo "$RESPONSE"
 
-            NEW_ID=$(echo "$RESPONSE" | python -c "import sys,json; print(json.load(sys.stdin)['id'])")
+            NEW_ID=$(echo "$RESPONSE" | python -c \
+              "import sys,json; print(json.load(sys.stdin)['id'])")
 
             echo ""
             echo "========================================"
@@ -174,6 +492,7 @@ jobs:
               -F "file1=@gta6-countdown.png" \
               -F "payload_json=<payload.json"
 
+            echo ""
             echo "Contador actualizado correctamente."
 
           fi
