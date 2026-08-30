@@ -1,0 +1,117 @@
+name: GTA VI News - Cal Bot
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  news:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          pip install feedparser requests
+
+      - name: Check GTA VI news
+        env:
+          NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
+        run: |
+          python - <<'PY'
+          import feedparser
+          import requests
+          import os
+          import json
+          import hashlib
+
+          WEBHOOK = os.environ["NEWS_DRAFT_WEBHOOK"]
+
+          RSS_URL = (
+              "https://news.google.com/rss/"
+              "?q=GTA+VI"
+              "&hl=en-US"
+              "&gl=US"
+              "&ceid=US:en"
+          )
+
+          HISTORY_FILE = "seen_news.json"
+
+          if os.path.exists(HISTORY_FILE):
+              with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                  seen = json.load(f)
+          else:
+              seen = []
+
+          feed = feedparser.parse(RSS_URL)
+
+          if not feed.entries:
+              print("No se encontraron noticias.")
+              exit(0)
+
+          for entry in feed.entries[:10]:
+
+              title = entry.get("title", "").strip()
+              link = entry.get("link", "").strip()
+
+              if not title or not link:
+                  continue
+
+              news_id = hashlib.sha256(
+                  link.encode("utf-8")
+              ).hexdigest()
+
+              if news_id in seen:
+                  continue
+
+              content = (
+                  "<@&1504921814759903343>\n\n"
+                  "🧭 **Noticias**\n\n"
+                  f"# {title}\n\n"
+                  "**Resumen**\n"
+                  "Nueva información relacionada con "
+                  "Grand Theft Auto VI.\n\n"
+                  "**Fuente original**\n"
+                  f"{link}\n\n"
+                  "⚠️ **REVISIÓN REQUERIDA**\n"
+                  "Este mensaje es un borrador. "
+                  "Revisa la información antes de publicarla "
+                  "en #noticias."
+              )
+
+              payload = {
+                  "content": content,
+                  "username": "Cal Bot",
+                  "allowed_mentions": {
+                      "roles": [
+                          "1504921814759903343"
+                      ]
+                  }
+              }
+
+              response = requests.post(
+                  WEBHOOK,
+                  json=payload,
+                  timeout=30
+              )
+
+              response.raise_for_status()
+
+              print("Borrador enviado:")
+              print(title)
+
+              seen.append(news_id)
+
+          with open(
+              HISTORY_FILE,
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  seen[-500:],
+                  f,
+                  indent=2
+              )
+
+          print("Proceso terminado.")
+          PY
