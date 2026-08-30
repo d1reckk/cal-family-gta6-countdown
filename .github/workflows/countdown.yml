@@ -10,92 +10,150 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Generate countdown image
+      - name: Generate GTA VI countdown
         run: |
           pip install pillow requests
 
           python - <<'PY'
           from PIL import Image, ImageDraw, ImageFont
-          from datetime import datetime, timezone
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
           import requests
+          import os
 
-          release = datetime(2026, 11, 19, 0, 0, 0, tzinfo=timezone.utc)
-          now = datetime.now(timezone.utc)
+          TZ = ZoneInfo("America/New_York")
+          release = datetime(2026, 11, 19, 0, 0, 0, tzinfo=TZ)
+          now = datetime.now(TZ)
 
           remaining = release - now
 
           days = max(remaining.days, 0)
-          hours = max((remaining.seconds // 3600), 0)
-          minutes = max(((remaining.seconds % 3600) // 60), 0)
-          seconds = max((remaining.seconds % 60), 0)
+          seconds_left = max(remaining.seconds, 0)
 
-          img = Image.new("RGB", (1200, 630), "#08090d")
+          hours = seconds_left // 3600
+          minutes = (seconds_left % 3600) // 60
+          seconds = seconds_left % 60
+
+          W, H = 1280, 720
+
+          # Fondo
+          img = Image.new("RGB", (W, H), (28, 7, 35))
           draw = ImageDraw.Draw(img)
 
-          try:
-              font_big = ImageFont.truetype(
-                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72
-              )
-              font_medium = ImageFont.truetype(
-                  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 42
-              )
-              font_small = ImageFont.truetype(
-                  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28
-              )
-          except:
-              font_big = font_medium = font_small = None
+          # Degradado rosa/morado
+          for y in range(H):
+              t = y / H
+              r = int(35 + 95 * t)
+              g = int(8 + 8 * t)
+              b = int(48 + 45 * t)
+              draw.line((0, y, W, y), fill=(r, g, b))
 
+          # Luces decorativas
+          for x, y, radius in [
+              (120, 100, 150),
+              (1160, 120, 170),
+              (80, 620, 180),
+              (1200, 620, 200)
+          ]:
+              draw.ellipse(
+                  (x-radius, y-radius, x+radius, y+radius),
+                  fill=(115, 25, 105)
+              )
+
+          font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+          title = ImageFont.truetype(font_path, 52)
+          subtitle = ImageFont.truetype(font_path, 32)
+          huge = ImageFont.truetype(font_path, 150)
+          days_font = ImageFont.truetype(font_path, 48)
+          timer_font = ImageFont.truetype(font_path, 38)
+          small = ImageFont.truetype(font_path, 25)
+
+          # Título
           draw.text(
-              (600, 100),
+              (W//2, 55),
               "GRAND THEFT AUTO VI",
+              font=title,
               fill="white",
-              font=font_big,
-              anchor="mm"
+              anchor="ma"
           )
 
+          # CAL FAMILY
           draw.text(
-              (600, 190),
+              (W//2, 125),
               "CAL FAMILY",
-              fill="#ff6fae",
-              font=font_medium,
+              font=subtitle,
+              fill=(255, 105, 180),
+              anchor="ma"
+          )
+
+          # Tarjeta central
+          card = (170, 175, 1110, 570)
+
+          draw.rounded_rectangle(
+              card,
+              radius=45,
+              fill=(247, 242, 225),
+              outline=(255, 100, 180),
+              width=9
+          )
+
+          # LEONIDA
+          draw.text(
+              (W//2, 220),
+              "LEONIDA",
+              font=subtitle,
+              fill=(220, 55, 125),
+              anchor="ma"
+          )
+
+          # Número
+          draw.text(
+              (W//2, 355),
+              str(days),
+              font=huge,
+              fill=(20, 18, 22),
               anchor="mm"
           )
 
-          countdown = f"{days} DAYS  {hours:02d}:{minutes:02d}:{seconds:02d}"
+          # DAYS
+          draw.text(
+              (W//2, 455),
+              "DÍAS",
+              font=days_font,
+              fill=(220, 55, 125),
+              anchor="mm"
+          )
+
+          # Tiempo
+          timer = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
           draw.text(
-              (600, 330),
-              countdown,
+              (W//2, 515),
+              timer,
+              font=timer_font,
+              fill=(25, 22, 28),
+              anchor="mm"
+          )
+
+          # Fecha
+          draw.text(
+              (W//2, 660),
+              "19 DE NOVIEMBRE DE 2026",
+              font=small,
               fill="white",
-              font=font_big,
-              anchor="mm"
-          )
-
-          draw.text(
-              (600, 450),
-              "NOVEMBER 19, 2026",
-              fill="#ff6fae",
-              font=font_medium,
-              anchor="mm"
-          )
-
-          draw.text(
-              (600, 530),
-              "CAL FAMILY • GTA VI COMMUNITY",
-              fill="#aaaaaa",
-              font=font_small,
               anchor="mm"
           )
 
           img.save("gta6-countdown.png")
 
-          print(f"Countdown: {days} days, {hours} hours, {minutes} minutes, {seconds} seconds")
+          print(f"{days} days remaining")
           PY
 
-      - name: Send countdown to Discord
+      - name: Send image to Discord
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           curl -X POST "$DISCORD_WEBHOOK" \
             -F "file1=@gta6-countdown.png" \
-            -F 'payload_json={"content":"🎮 **GTA VI COUNTDOWN**\n\n🔥 CAL FAMILY"}'
+            -F 'payload_json={"content":"🌴 **GRAND THEFT AUTO VI**\n\n⏳ **Faltan días para GTA VI — CAL FAMILY**"}'
