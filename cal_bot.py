@@ -8,6 +8,21 @@ from datetime import datetime, timezone, timedelta
 from difflib import SequenceMatcher
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
+# ================================================================
+# STARTUP CHECK
+# ================================================================
+
+BOT_FILE = os.path.abspath(__file__)
+
+print("=" * 64)
+print("CAL BOT FILE:", BOT_FILE)
+print("PYTHON:", os.sys.executable)
+print("OS MODULE:", getattr(os, "__file__", "built-in"))
+print("=" * 64)
+
+if not hasattr(os, "environ"):
+    raise RuntimeError("El mÃ³dulo os no expone environ; instalaciÃ³n Python daÃ±ada.")
+
 import feedparser
 import requests
 from bs4 import BeautifulSoup
@@ -18,16 +33,16 @@ from bs4 import BeautifulSoup
 # Editor de noticias de CAL FAMILY
 #
 # Objetivos:
-# - JSON robusto: ningún KeyError debe tumbar el bot.
-# - 429/503 de Gemini no detienen la evaluación.
+# - JSON robusto: ningÃºn KeyError debe tumbar el bot.
+# - 429/503 de Gemini no detienen la evaluaciÃ³n.
 # - No exige una fuente oficial de Rockstar.
-# - Separa Noticias / Análisis / Opinión.
+# - Separa Noticias / AnÃ¡lisis / OpiniÃ³n.
 # - Evita leaks y cyberleaks.
 # - Deduplica feed + historial.
-# - Evalúa varias candidatas y publica la mejor.
+# - EvalÃºa varias candidatas y publica la mejor.
 # - Conserva el historial.
-# - Un Extended Look puede ser válido si un medio fiable aporta
-#   información nueva y sustancial.
+# - Un Extended Look puede ser vÃ¡lido si un medio fiable aporta
+#   informaciÃ³n nueva y sustancial.
 # ================================================================
 
 WEBHOOK = os.environ.get("NEWS_DRAFT_WEBHOOK", "").strip()
@@ -36,13 +51,56 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 HISTORY_FILE = "seen_news.json"
 ROLE_ID = "1504921814759903343"
 
-RSS_URL = (
-    "https://news.google.com/rss/"
-    "?q=GTA+VI"
-    "&hl=en-US"
-    "&gl=US"
-    "&ceid=US:en"
-)
+RSS_SOURCES = [
+    {
+        "name": "Google News GTA VI (direct)",
+        "url": (
+            "https://news.google.com/rss/search"
+            "?q=GTA%20VI"
+            "&hl=en-US"
+            "&gl=US"
+            "&ceid=US:en"
+        ),
+    },
+    {
+        "name": "Google News EN",
+        "url": (
+            "https://news.google.com/rss/"
+            "?q=GTA+VI"
+            "&hl=en-US"
+            "&gl=US"
+            "&ceid=US:en"
+        ),
+    },
+    {
+        "name": "Google News ES",
+        "url": (
+            "https://news.google.com/rss/"
+            "?q=GTA+VI"
+            "&hl=es"
+            "&gl=ES"
+            "&ceid=ES:es"
+        ),
+    },
+    {
+        "name": "Google News GTA 6",
+        "url": (
+            "https://news.google.com/rss/"
+            "?q=GTA+6"
+            "&hl=en-US"
+            "&gl=US"
+            "&ceid=US:en"
+        ),
+    },
+    {
+        "name": "Bing News GTA VI",
+        "url": (
+            "https://www.bing.com/news/search"
+            "?q=GTA+VI"
+            "&format=rss"
+        ),
+    },
+]
 
 GEMINI_MODELS = [
     "gemini-3.7-flash",
@@ -66,7 +124,7 @@ HEADERS = {
 
 
 # ================================================================
-# NORMALIZACIÓN / DUPLICADOS
+# NORMALIZACIÃ“N / DUPLICADOS
 # ================================================================
 
 def normalize_text(text):
@@ -85,7 +143,7 @@ def normalize_text(text):
         text = text.replace(old, new)
 
     text = re.sub(r"https?://\S+", " ", text)
-    text = re.sub(r"[^a-z0-9áéíóúüñ ]+", " ", text)
+    text = re.sub(r"[^a-z0-9Ã¡Ã©Ã­Ã³ÃºÃ¼Ã± ]+", " ", text)
 
     return re.sub(r"\s+", " ", text).strip()
 
@@ -241,7 +299,7 @@ def published_title_duplicate(title, history, threshold=0.88):
 # FILTROS LOCALES
 #
 # Estos filtros NO intentan decidir si una noticia es buena.
-# Solo eliminan casos inequívocos que no merece la pena mandar
+# Solo eliminan casos inequÃ­vocos que no merece la pena mandar
 # a Gemini.
 # ================================================================
 
@@ -255,7 +313,7 @@ TITLE_BLOCKLIST = [
     "private files",
     "archivos robados",
     "archivos privados",
-    "filtración de datos",
+    "filtraciÃ³n de datos",
     "datos robados",
     "brecha de seguridad",
 ]
@@ -310,7 +368,158 @@ def looks_like_leak_or_cyberleak(title, content):
 
 
 # ================================================================
-# EXTRACCIÓN DE ARTÍCULOS
+# RSS ROBUSTO + DIAGNÃ“STICO
+# ================================================================
+
+def fetch_rss_source(source):
+    """Descarga una fuente RSS sin permitir que una fuente caÃ­da detenga el bot."""
+    name = str(source.get("name") or "RSS desconocido")
+    url = str(source.get("url") or "").strip()
+
+    print("-" * 64)
+    print(f"FEED: {name}")
+    print(f"URL: {url}")
+
+    if not url:
+        print("FEED DESCARTADO: URL vacÃ­a.")
+        return []
+
+    try:
+        response = requests.get(
+            url,
+            headers={
+                **HEADERS,
+                "Accept": (
+                    "application/rss+xml, application/atom+xml, "
+                    "application/xml, text/xml, text/html;q=0.9, */*;q=0.8"
+                ),
+            },
+            timeout=REQUEST_TIMEOUT,
+            allow_redirects=True,
+        )
+    except requests.RequestException as exc:
+        print(f"FEED ERROR DE RED: {exc}")
+        return []
+
+    print("FEED HTTP:", response.status_code)
+    print("FEED FINAL URL:", response.url)
+    print(
+        "FEED CONTENT-TYPE:",
+        response.headers.get("content-type", "desconocido"),
+    )
+    print("FEED BYTES:", len(response.content))
+
+    if response.status_code != 200:
+        print("FEED DESCARTADO: HTTP no satisfactorio.")
+        return []
+
+    if not response.content.strip():
+        print("FEED DESCARTADO: respuesta vacÃ­a.")
+        return []
+
+    preview = response.content[:400].decode(
+        response.encoding or "utf-8",
+        errors="replace",
+    ).replace("\n", " ").replace("\r", " ")
+
+    print("FEED PREVIEW:", preview[:250])
+
+    parsed = feedparser.parse(response.content)
+
+    if getattr(parsed, "bozo", False):
+        parser_error = getattr(parsed, "bozo_exception", None)
+        print(
+            "FEED PARSER WARNING:",
+            str(parser_error)[:500] if parser_error else "XML no estÃ¡ndar",
+        )
+
+    entries = list(getattr(parsed, "entries", []) or [])
+    print("FEED ENTRIES:", len(entries))
+
+    if not entries:
+        low = preview.lower()
+        if "<html" in low or "<!doctype html" in low:
+            print(
+                "FEED DIAGNÃ“STICO: el servidor devolviÃ³ HTML "
+                "en lugar de RSS/XML; posible bloqueo o redirecciÃ³n."
+            )
+        else:
+            print(
+                "FEED DIAGNÃ“STICO: la respuesta no contiene "
+                "entradas RSS utilizables."
+            )
+        return []
+
+    for entry in entries:
+        try:
+            entry["_cal_feed_source"] = name
+        except Exception:
+            pass
+
+    for index, entry in enumerate(entries[:3], start=1):
+        print(
+            f"  {index}. "
+            f"{str(entry.get('title') or '(sin tÃ­tulo)')[:140]}"
+        )
+
+    return entries
+
+
+def load_news_feed():
+    """Combina todos los RSS y elimina duplicados entre fuentes."""
+    combined = []
+    seen_urls = set()
+    seen_titles = []
+
+    print("=" * 64)
+    print("INICIANDO DIAGNÃ“STICO DE FUENTES RSS")
+    print(f"FUENTES CONFIGURADAS: {len(RSS_SOURCES)}")
+    print("=" * 64)
+
+    for source in RSS_SOURCES:
+        try:
+            entries = fetch_rss_source(source)
+        except Exception as exc:
+            print(
+                f"FEED ERROR INESPERADO en "
+                f"{source.get('name', 'RSS desconocido')}: {exc}"
+            )
+            continue
+
+        for entry in entries:
+            title = str(entry.get("title") or "").strip()
+            url = str(entry.get("link") or "").strip()
+
+            if not title or not url:
+                continue
+
+            normalized_url = canonical_url(url)
+            normalized_title = normalize_text(title)
+
+            if normalized_url and normalized_url in seen_urls:
+                continue
+
+            if any(
+                similarity(title, old_title) >= 0.90
+                for old_title in seen_titles
+            ):
+                continue
+
+            if normalized_url:
+                seen_urls.add(normalized_url)
+
+            seen_titles.append(title)
+            combined.append(entry)
+
+    print("=" * 64)
+    print(f"TOTAL ENTRADAS RSS ÃšNICAS: {len(combined)}")
+    print("=" * 64)
+
+    return combined
+
+
+# ================================================================
+# EXTRACCIÃ“N DE ARTÃCULOS
 # ================================================================
 
 def fetch_article(google_url, rss_content):
@@ -325,7 +534,7 @@ def fetch_article(google_url, rss_content):
             allow_redirects=True,
         )
 
-        print("Estado de página:", response.status_code)
+        print("Estado de pÃ¡gina:", response.status_code)
 
         final_url = response.url or google_url
 
@@ -363,10 +572,10 @@ def fetch_article(google_url, rss_content):
             )[:18000]
 
     except requests.RequestException as exc:
-        print("No se pudo extraer el artículo:", exc)
+        print("No se pudo extraer el artÃ­culo:", exc)
 
     except Exception as exc:
-        print("Error procesando el artículo:", exc)
+        print("Error procesando el artÃ­culo:", exc)
 
     if len(article_text) >= 300:
         return article_text, final_url
@@ -383,7 +592,7 @@ def fetch_article(google_url, rss_content):
 
 def extract_json(text):
     if not isinstance(text, str):
-        raise ValueError("Gemini no devolvió texto.")
+        raise ValueError("Gemini no devolviÃ³ texto.")
 
     text = text.strip()
 
@@ -405,7 +614,7 @@ def extract_json(text):
 
     if start < 0 or end <= start:
         raise ValueError(
-            "No se encontró un objeto JSON en la respuesta."
+            "No se encontrÃ³ un objeto JSON en la respuesta."
         )
 
     json_text = text[start:end + 1]
@@ -443,120 +652,120 @@ Eres CAL BOT, editor de noticias de CAL FAMILY,
 una comunidad dedicada a GTA VI.
 
 OBJETIVO
-Selecciona información realmente útil para el canal.
+Selecciona informaciÃ³n realmente Ãºtil para el canal.
 No publiques por llenar espacio, pero tampoco descartes
-una noticia legítima solo porque la fuente no sea Rockstar Games.
+una noticia legÃ­tima solo porque la fuente no sea Rockstar Games.
 
-CLASIFICACIÓN OBLIGATORIA
+CLASIFICACIÃ“N OBLIGATORIA
 Usa EXACTAMENTE una:
 
-- "Noticias": información factual o hechos verificables.
-- "Análisis": análisis periodístico que aporta información,
+- "Noticias": informaciÃ³n factual o hechos verificables.
+- "AnÃ¡lisis": anÃ¡lisis periodÃ­stico que aporta informaciÃ³n,
   contexto o conclusiones nuevas basadas en material real.
-- "Opinión": valoración personal, reacción, predicción o
+- "OpiniÃ³n": valoraciÃ³n personal, reacciÃ³n, predicciÃ³n o
   comentario editorial.
 
-Una opinión NO debe convertirse en una noticia factual.
+Una opiniÃ³n NO debe convertirse en una noticia factual.
 
-Un análisis puede publicarse si aporta información sustancial
-nueva y está claramente presentado como análisis.
+Un anÃ¡lisis puede publicarse si aporta informaciÃ³n sustancial
+nueva y estÃ¡ claramente presentado como anÃ¡lisis.
 
-ESTÁNDAR DE PUBLICACIÓN
-PUBLICA solo si hay información concreta y relevante.
+ESTÃNDAR DE PUBLICACIÃ“N
+PUBLICA solo si hay informaciÃ³n concreta y relevante.
 
 Ejemplos:
-- declaración atribuida;
+- declaraciÃ³n atribuida;
 - cambio confirmado;
 - fecha;
 - cifra;
-- decisión empresarial;
-- información de desarrollo;
+- decisiÃ³n empresarial;
+- informaciÃ³n de desarrollo;
 - casting;
-- tecnología;
+- tecnologÃ­a;
 - lanzamiento;
 - plataformas;
-- características;
-- producción;
+- caracterÃ­sticas;
+- producciÃ³n;
 - marketing;
-- clasificación;
-- distribución;
+- clasificaciÃ³n;
+- distribuciÃ³n;
 - otro dato verificable y relevante.
 
 FUENTES
 - Una fuente secundaria fiable puede ser suficiente.
-- Una declaración de un desarrollador, actor, ejecutivo u otra
+- Una declaraciÃ³n de un desarrollador, actor, ejecutivo u otra
   persona identificable puede ser noticia aunque no sea un
   comunicado de Rockstar.
-- Un informe periodístico puede publicarse si explica claramente
-  de dónde sale el dato.
+- Un informe periodÃ­stico puede publicarse si explica claramente
+  de dÃ³nde sale el dato.
 - NO exijas una fuente oficial cuando existe evidencia
-  periodística sólida.
+  periodÃ­stica sÃ³lida.
 
 LEAKS / CYBERLEAKS
-DESCARTA si la información depende de material obtenido mediante:
+DESCARTA si la informaciÃ³n depende de material obtenido mediante:
 - hackeo;
-- intrusión;
+- intrusiÃ³n;
 - acceso no autorizado;
 - robo de archivos;
 - credenciales;
 - bases de datos robadas;
-- código fuente robado;
+- cÃ³digo fuente robado;
 - archivos privados;
 - cyberleaks.
 
 No conviertas un leak en noticia solo porque varios medios
 lo reproduzcan.
 
-La mera palabra "leak" en un contexto histórico no basta para
-descartar. Evalúa de qué depende realmente la afirmación principal.
+La mera palabra "leak" en un contexto histÃ³rico no basta para
+descartar. EvalÃºa de quÃ© depende realmente la afirmaciÃ³n principal.
 
 DUPLICADOS
-Compara el HECHO CENTRAL con el historial, no solo los títulos.
+Compara el HECHO CENTRAL con el historial, no solo los tÃ­tulos.
 
-Dos artículos distintos que cubren el mismo anuncio o hecho son
+Dos artÃ­culos distintos que cubren el mismo anuncio o hecho son
 la misma noticia salvo que el segundo aporte un dato
 sustancialmente nuevo.
 
-EXTENDED LOOK / TRÁILERS
-NO descartes automáticamente un artículo por tratar sobre un
-Extended Look, tráiler o material promocional.
+EXTENDED LOOK / TRÃILERS
+NO descartes automÃ¡ticamente un artÃ­culo por tratar sobre un
+Extended Look, trÃ¡iler o material promocional.
 
 - Si solo enumera escenas o detalles ya visibles, DESCARTA.
-- Si un medio fiable analiza ese material y aporta información
-  nueva, contexto verificable o una conclusión periodística
-  sustancial, puede publicarse como "Análisis".
-- No inventes novedades a partir de imágenes o escenas.
+- Si un medio fiable analiza ese material y aporta informaciÃ³n
+  nueva, contexto verificable o una conclusiÃ³n periodÃ­stica
+  sustancial, puede publicarse como "AnÃ¡lisis".
+- No inventes novedades a partir de imÃ¡genes o escenas.
 
 DESCARTA cuando:
-- el contenido principal sea rumor, especulación o predicción
+- el contenido principal sea rumor, especulaciÃ³n o predicciÃ³n
   sin respaldo suficiente;
-- sea una opinión/reacción/review sin información nueva;
-- sea SEO/FAQ/recopilación que solo repite lo conocido;
-- el titular prometa algo que el artículo no demuestra;
-- la información sea demasiado ambigua para comprobarla;
-- el hecho central ya esté cubierto por el historial y no exista
+- sea una opiniÃ³n/reacciÃ³n/review sin informaciÃ³n nueva;
+- sea SEO/FAQ/recopilaciÃ³n que solo repite lo conocido;
+- el titular prometa algo que el artÃ­culo no demuestra;
+- la informaciÃ³n sea demasiado ambigua para comprobarla;
+- el hecho central ya estÃ© cubierto por el historial y no exista
   novedad sustancial;
-- sea un leak/cyberleak según las reglas anteriores.
+- sea un leak/cyberleak segÃºn las reglas anteriores.
 
-REDACCIÓN SI PUBLICAR
-- Español natural.
-- Título claro y preciso.
-- No uses clickbait engañoso.
+REDACCIÃ“N SI PUBLICAR
+- EspaÃ±ol natural.
+- TÃ­tulo claro y preciso.
+- No uses clickbait engaÃ±oso.
 - 550-950 caracteres aproximadamente.
-- Explica primero qué ocurrió y después por qué importa.
+- Explica primero quÃ© ocurriÃ³ y despuÃ©s por quÃ© importa.
 - Atribuye declaraciones y reportes:
-  "X dijo...", "según X...", "el medio informa...".
+  "X dijo...", "segÃºn X...", "el medio informa...".
 - No inventes nombres, cifras, fechas, citas ni contexto.
 - No pongas la URL dentro de "content".
-- Si category es "Análisis", deja claro que es análisis y no
+- Si category es "AnÃ¡lisis", deja claro que es anÃ¡lisis y no
   un anuncio oficial.
-- No afirmes como hecho lo que el artículo presenta como posibilidad.
+- No afirmes como hecho lo que el artÃ­culo presenta como posibilidad.
 
-PUNTUACIÓN
+PUNTUACIÃ“N
 Asigna "score" de 0 a 100.
 
 90-100:
-Muy sólida, nueva y relevante.
+Muy sÃ³lida, nueva y relevante.
 
 75-89:
 Buena candidata, con evidencia y novedad suficientes.
@@ -565,13 +774,13 @@ Buena candidata, con evidencia y novedad suficientes.
 Interesante pero con limitaciones.
 
 0-59:
-No alcanza el estándar.
+No alcanza el estÃ¡ndar.
 
-Una opinión no debe recibir una puntuación alta solo por ser
+Una opiniÃ³n no debe recibir una puntuaciÃ³n alta solo por ser
 interesante.
 
 RESPUESTA
-Devuelve ÚNICAMENTE JSON válido.
+Devuelve ÃšNICAMENTE JSON vÃ¡lido.
 NO uses Markdown.
 NO escribas texto fuera del JSON.
 
@@ -580,21 +789,21 @@ Formato exacto:
 {{
   "decision": "PUBLICAR" o "DESCARTAR",
   "reason": "motivo breve",
-  "category": "Noticias" o "Análisis" o "Opinión",
+  "category": "Noticias" o "AnÃ¡lisis" o "OpiniÃ³n",
   "score": 0,
-  "title": "título en español",
+  "title": "tÃ­tulo en espaÃ±ol",
   "content": "texto final"
 }}
 
 Si DESCARTAR:
 - "content" debe ser "";
-- "score" debe reflejar por qué no alcanza el estándar.
+- "score" debe reflejar por quÃ© no alcanza el estÃ¡ndar.
 
 HISTORIAL DE PUBLICACIONES:
 {previous_text}
 
-ARTÍCULO CANDIDATO:
-TÍTULO: {title}
+ARTÃCULO CANDIDATO:
+TÃTULO: {title}
 FUENTE: {source_url}
 
 CONTENIDO:
@@ -679,7 +888,7 @@ def ask_gemini(
                         or not candidates
                     ):
                         raise RuntimeError(
-                            "Gemini no devolvió candidates."
+                            "Gemini no devolviÃ³ candidates."
                         )
 
                     first_candidate = (
@@ -706,7 +915,7 @@ def ask_gemini(
                         or not parts
                     ):
                         raise RuntimeError(
-                            "Gemini no devolvió parts."
+                            "Gemini no devolviÃ³ parts."
                         )
 
                     text = ""
@@ -726,14 +935,14 @@ def ask_gemini(
 
                     if not text:
                         raise RuntimeError(
-                            "Gemini devolvió texto vacío."
+                            "Gemini devolviÃ³ texto vacÃ­o."
                         )
 
                     result = extract_json(text)
 
                     if not isinstance(result, dict):
                         raise RuntimeError(
-                            "Gemini no devolvió un objeto JSON."
+                            "Gemini no devolviÃ³ un objeto JSON."
                         )
 
                     return result
@@ -766,7 +975,7 @@ def ask_gemini(
                     continue
 
                 # Otros 4xx no suelen solucionarse repitiendo
-                # exactamente la misma petición.
+                # exactamente la misma peticiÃ³n.
                 print(
                     "Error no recuperable en este modelo."
                 )
@@ -777,11 +986,11 @@ def ask_gemini(
                 ValueError,
             ) as exc:
                 last_error = (
-                    f"JSON inválido: {exc}"
+                    f"JSON invÃ¡lido: {exc}"
                 )
 
                 print(
-                    "Respuesta JSON inválida:",
+                    "Respuesta JSON invÃ¡lida:",
                     exc,
                 )
 
@@ -824,15 +1033,15 @@ def ask_gemini(
                 break
 
     print(
-        "ERROR: ningún modelo de Gemini "
-        "respondió correctamente."
+        "ERROR: ningÃºn modelo de Gemini "
+        "respondiÃ³ correctamente."
     )
 
     print(last_error or "")
 
     # IMPORTANTE:
     # None significa "esta candidata no pudo evaluarse".
-    # main() continúa con las demás candidatas.
+    # main() continÃºa con las demÃ¡s candidatas.
     return None
 
 
@@ -858,7 +1067,7 @@ def send_discord(message):
 
     except requests.RequestException as exc:
         print(
-            "ERROR DE CONEXIÓN CON DISCORD:",
+            "ERROR DE CONEXIÃ“N CON DISCORD:",
             exc,
         )
         return False
@@ -889,6 +1098,14 @@ def get_candidates(feed, history):
     now = datetime.now(timezone.utc)
     candidates = []
 
+    entries = (
+        feed.entries
+        if hasattr(feed, "entries")
+        else feed
+    )
+
+    entries = list(entries or [])
+
     published_ids = set(
         history.get("published", [])
     )
@@ -912,7 +1129,7 @@ def get_candidates(feed, history):
     seen_feed_urls = set()
     seen_feed_titles = []
 
-    for entry in feed.entries[:40]:
+    for entry in entries[:40]:
         if not hasattr(entry, "get"):
             continue
 
@@ -978,7 +1195,7 @@ def get_candidates(feed, history):
 
         if item_id in published_ids:
             print(
-                "Ignorada: artículo ya procesado."
+                "Ignorada: artÃ­culo ya procesado."
             )
             continue
 
@@ -997,12 +1214,12 @@ def get_candidates(feed, history):
             for old_title in history_titles
         ):
             print(
-                "Ignorada: título demasiado "
+                "Ignorada: tÃ­tulo demasiado "
                 "parecido al historial."
             )
             continue
 
-        # Deduplicación dentro del feed.
+        # DeduplicaciÃ³n dentro del feed.
         if item_id in seen_feed_ids:
             continue
 
@@ -1040,6 +1257,10 @@ def get_candidates(feed, history):
             "title": title,
             "google_url": google_url,
             "rss_content": rss_content,
+            "feed_source": str(
+                entry.get("_cal_feed_source")
+                or "RSS desconocido"
+            ),
         })
 
         seen_feed_ids.add(item_id)
@@ -1055,7 +1276,7 @@ def get_candidates(feed, history):
 
 
 # ================================================================
-# NORMALIZACIÓN DE LA RESPUESTA EDITORIAL
+# NORMALIZACIÃ“N DE LA RESPUESTA EDITORIAL
 # ================================================================
 
 def normalize_editor_result(result):
@@ -1118,19 +1339,19 @@ def normalize_editor_result(result):
 
     if category not in (
         "Noticias",
-        "Análisis",
-        "Opinión",
+        "AnÃ¡lisis",
+        "OpiniÃ³n",
     ):
         category = "Noticias"
 
-    # Opinión nunca se publica automáticamente.
-    if category == "Opinión":
+    # OpiniÃ³n nunca se publica automÃ¡ticamente.
+    if category == "OpiniÃ³n":
         decision = "DESCARTAR"
 
         if not reason:
             reason = (
-                "El contenido está clasificado "
-                "como opinión."
+                "El contenido estÃ¡ clasificado "
+                "como opiniÃ³n."
             )
 
     return {
@@ -1159,17 +1380,17 @@ def build_discord_message(
 
     return (
         f"<@&{ROLE_ID}>\n\n"
-        f"🧭 **{category}**\n\n"
+        f"ðŸ§­ **{category}**\n\n"
         f"# {title}\n\n"
         f"{content}\n\n"
-        f"🔗 **Fuente original:** "
+        f"ðŸ”— **Fuente original:** "
         f"{source_url}\n\n"
-        f"⚠️ **REVISIÓN REQUERIDA**\n"
+        f"âš ï¸ **REVISIÃ“N REQUERIDA**\n"
         f"Este contenido fue preparado por Cal Bot "
         f"como borrador editorial. Revisa la "
-        f"información antes de publicarlo en "
+        f"informaciÃ³n antes de publicarlo en "
         f"#noticias.\n\n"
-        f"-# Cal Bot · {date_text}"
+        f"-# Cal Bot Â· {date_text}"
     )
 
 
@@ -1200,18 +1421,27 @@ def main():
     history = load_history()
 
     try:
-        feed = feedparser.parse(RSS_URL)
+        feed_entries = load_news_feed()
     except Exception as exc:
         print(
-            "ERROR leyendo RSS:",
+            "ERROR GENERAL LEYENDO RSS:",
             exc,
         )
         return
 
-    if not feed.entries:
+    if not feed_entries:
+        print("=" * 64)
+        print("NO SE ENCONTRARON NOTICIAS EN NINGÃšN FEED.")
+        print("El bot NO va a fallar silenciosamente.")
         print(
-            "No se encontraron noticias."
+            "Revisa arriba FEED HTTP, CONTENT-TYPE, BYTES, PREVIEW "
+            "y FEED ENTRIES para identificar el bloqueo."
         )
+        print(
+            "Si todas las fuentes devuelven 0, el problema es el "
+            "acceso RSS desde GitHub Actions, no Gemini ni Discord."
+        )
+        print("=" * 64)
         return
 
     print(
@@ -1219,7 +1449,7 @@ def main():
     )
 
     candidates = get_candidates(
-        feed,
+        feed_entries,
         history,
     )
 
@@ -1232,7 +1462,7 @@ def main():
 
     if not candidates:
         print(
-            "Ninguna noticia nueva pasó "
+            "Ninguna noticia nueva pasÃ³ "
             "los filtros iniciales."
         )
         return
@@ -1260,6 +1490,7 @@ def main():
         )
         print(candidate["title"])
         print(candidate["google_url"])
+        print("Feed:", candidate.get("feed_source", "RSS desconocido"))
         print("=" * 64)
 
         try:
@@ -1272,7 +1503,7 @@ def main():
 
         except Exception as exc:
             print(
-                "Error obteniendo artículo; "
+                "Error obteniendo artÃ­culo; "
                 "continuando:",
                 exc,
             )
@@ -1281,7 +1512,7 @@ def main():
         if not source_content:
             print(
                 "Descartada: no hay "
-                "información suficiente."
+                "informaciÃ³n suficiente."
             )
             continue
 
@@ -1299,7 +1530,7 @@ def main():
         if source_hash in history_hashes:
             print(
                 "Descartada: contenido "
-                "idéntico al historial."
+                "idÃ©ntico al historial."
             )
             continue
 
@@ -1313,13 +1544,13 @@ def main():
             source_content,
         ):
             print(
-                "Descartada: señales de "
+                "Descartada: seÃ±ales de "
                 "leak/cyberleak."
             )
             continue
 
         print(
-            "CAL BOT ESTÁ EVALUANDO..."
+            "CAL BOT ESTÃ EVALUANDO..."
         )
 
         try:
@@ -1353,7 +1584,7 @@ def main():
 
         if not result:
             print(
-                "Respuesta editorial inválida. "
+                "Respuesta editorial invÃ¡lida. "
                 "Continuando..."
             )
             continue
@@ -1365,7 +1596,7 @@ def main():
 
             print(
                 result["reason"]
-                or "No cumple el estándar editorial."
+                or "No cumple el estÃ¡ndar editorial."
             )
 
             continue
@@ -1382,16 +1613,16 @@ def main():
             )
             continue
 
-        if category == "Opinión":
+        if category == "OpiniÃ³n":
             print(
-                "Descartada: categoría Opinión."
+                "Descartada: categorÃ­a OpiniÃ³n."
             )
             continue
 
-        # Umbral mínimo de publicación.
+        # Umbral mÃ­nimo de publicaciÃ³n.
         if score < 75:
             print(
-                "Descartada: puntuación "
+                "Descartada: puntuaciÃ³n "
                 f"insuficiente ({score:.1f}/100)."
             )
             continue
@@ -1402,15 +1633,15 @@ def main():
             0.86,
         ):
             print(
-                "Descartada: el título final "
+                "Descartada: el tÃ­tulo final "
                 "coincide con historial."
             )
             continue
 
-        # Evita que Gemini añada la fuente
+        # Evita que Gemini aÃ±ada la fuente
         # dentro del cuerpo.
         ai_content = re.sub(
-            r"🔗\s*\*\*Fuente original:\*\*"
+            r"ðŸ”—\s*\*\*Fuente original:\*\*"
             r".*?(?=\n|$)",
             "",
             ai_content,
@@ -1451,17 +1682,17 @@ def main():
         )
 
     # ------------------------------------------------------------
-    # Selección final
+    # SelecciÃ³n final
     # ------------------------------------------------------------
 
     if not evaluated_results:
         print("=" * 64)
         print(
-            "NINGUNA NOTICIA CUMPLIÓ "
+            "NINGUNA NOTICIA CUMPLIÃ“ "
             "LOS CRITERIOS."
         )
         print(
-            "El bot revisó las candidatas "
+            "El bot revisÃ³ las candidatas "
             "disponibles sin publicar basura."
         )
         print("=" * 64)
@@ -1469,8 +1700,8 @@ def main():
 
     category_priority = {
         "Noticias": 2,
-        "Análisis": 1,
-        "Opinión": 0,
+        "AnÃ¡lisis": 1,
+        "OpiniÃ³n": 0,
     }
 
     evaluated_results.sort(
@@ -1488,10 +1719,10 @@ def main():
 
     print("=" * 64)
     print("MEJOR NOTICIA SELECCIONADA")
-    print("Título:", best["title"])
-    print("Categoría:", best["category"])
+    print("TÃ­tulo:", best["title"])
+    print("CategorÃ­a:", best["category"])
     print(
-        "Puntuación:",
+        "PuntuaciÃ³n:",
         f'{best["score"]:.1f}/100',
     )
     print(
@@ -1507,13 +1738,13 @@ def main():
         best["message"]
     ):
         print(
-            "La noticia NO se guardará "
+            "La noticia NO se guardarÃ¡ "
             "como publicada."
         )
         raise SystemExit(1)
 
     # ------------------------------------------------------------
-    # Historial: SOLO después de confirmar Discord.
+    # Historial: SOLO despuÃ©s de confirmar Discord.
     # ------------------------------------------------------------
 
     history.setdefault(
@@ -1547,7 +1778,7 @@ def main():
     save_history(history)
 
     print("=" * 64)
-    print("DISCORD CONFIRMÓ.")
+    print("DISCORD CONFIRMÃ“.")
     print(
         "NOTICIA PUBLICADA Y "
         "GUARDADA EN HISTORIAL."
