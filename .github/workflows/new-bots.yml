@@ -1,40 +1,11 @@
-name: GTA VI News Bot
+```yaml id="v4g0xk"
+name: test
 
-on:
-  workflow_dispatch:
+on: workflow_dispatch
 
 jobs:
-  news-bot:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Files
-        run: |
-          echo "Repository:"
-          pwd
-          ls -la
-          echo "Checking files..."
-          test -f requirements.txt
-          test -f cal_bot.py
-
-      - name: Install
-        run: python -m pip install -r requirements.txt
-
-      - name: Syntax
-        run: python -m py_compile cal_bot.py
-
-      - name: Run
-        env:
-          NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          DISCORD_ROLE_ID: ${{ secrets.DISCORD_ROLE_ID }}
-        run: python cal_bot.py
+      - run: echo "YAML OK"
 ```
