@@ -1,0 +1,523 @@
+name: GTA VI News - Cal Bot
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  news:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pip install feedparser requests beautifulsoup4
+
+      - name: Find and analyze GTA VI news
+        env:
+          NEWS_DRAFT_WEBHOOK: ${{ secrets.NEWS_DRAFT_WEBHOOK }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python - <<'PY'
+          import feedparser
+          import requests
+          import os
+          import json
+          import hashlib
+          from bs4 import BeautifulSoup
+          from datetime import datetime, timezone
+
+          # ============================================================
+          # CONFIGURACIÓN
+          # ============================================================
+
+          WEBHOOK = os.environ["NEWS_DRAFT_WEBHOOK"]
+          GEMINI_KEY = os.environ["GEMINI_API_KEY"]
+
+          MODEL = "gemini-2.5-flash-lite"
+
+          GEMINI_URL = (
+              f"https://generativelanguage.googleapis.com/v1beta/"
+              f"models/{MODEL}:generateContent"
+          )
+
+          RSS_URL = (
+              "https://news.google.com/rss/"
+              "?q=GTA+VI"
+              "&hl=en-US"
+              "&gl=US"
+              "&ceid=US:en"
+          )
+
+          HISTORY_FILE = "seen_news.json"
+
+          # ============================================================
+          # HISTORIAL
+          # ============================================================
+
+          if os.path.exists(HISTORY_FILE):
+
+              with open(
+                  HISTORY_FILE,
+                  "r",
+                  encoding="utf-8"
+              ) as f:
+                  seen = json.load(f)
+
+          else:
+              seen = []
+
+          # ============================================================
+          # BUSCAR NOTICIAS
+          # ============================================================
+
+          print("Buscando noticias nuevas de GTA VI...")
+
+          feed = feedparser.parse(RSS_URL)
+
+          if not feed.entries:
+
+              print("No se encontraron noticias.")
+              exit(0)
+
+          article = None
+
+          for entry in feed.entries:
+
+              title = entry.get(
+                  "title",
+                  ""
+              ).strip()
+
+              link = entry.get(
+                  "link",
+                  ""
+              ).strip()
+
+              if not title or not link:
+                  continue
+
+              news_id = hashlib.sha256(
+                  link.encode("utf-8")
+              ).hexdigest()
+
+              if news_id not in seen:
+
+                  article = {
+                      "id": news_id,
+                      "title": title,
+                      "link": link
+                  }
+
+                  break
+
+          if article is None:
+
+              print(
+                  "No hay noticias nuevas."
+              )
+
+              exit(0)
+
+          title = article["title"]
+          link = article["link"]
+          news_id = article["id"]
+
+          print("========================================")
+          print("NUEVA NOTICIA ENCONTRADA")
+          print(title)
+          print(link)
+          print("========================================")
+
+          # ============================================================
+          # INTENTAR OBTENER EL ARTÍCULO
+          # ============================================================
+
+          article_text = ""
+
+          try:
+
+              headers = {
+                  "User-Agent":
+                      "Mozilla/5.0 "
+                      "(Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) "
+                      "Chrome/139 Safari/537.36"
+              }
+
+              page = requests.get(
+                  link,
+                  headers=headers,
+                  timeout=20,
+                  allow_redirects=True
+              )
+
+              print(
+                  f"Estado de la página: {page.status_code}"
+              )
+
+              if page.ok:
+
+                  soup = BeautifulSoup(
+                      page.text,
+                      "html.parser"
+                  )
+
+                  for element in soup(
+                      [
+                          "script",
+                          "style",
+                          "noscript",
+                          "svg"
+                      ]
+                  ):
+                      element.decompose()
+
+                  paragraphs = []
+
+                  for paragraph in soup.find_all("p"):
+
+                      text = paragraph.get_text(
+                          " ",
+                          strip=True
+                      )
+
+                      if len(text) >= 50:
+
+                          paragraphs.append(text)
+
+                  article_text = "\n".join(
+                      paragraphs
+                  )
+
+                  # Limitar tamaño para ahorrar tokens
+                  article_text = article_text[:12000]
+
+          except Exception as error:
+
+              print(
+                  "No se pudo obtener el artículo:"
+              )
+
+              print(error)
+
+          if not article_text:
+
+              article_text = (
+                  "No se pudo obtener el texto completo "
+                  "del artículo. Utiliza únicamente el "
+                  "título y los datos disponibles."
+              )
+
+          # ============================================================
+          # PROMPT DE CAL BOT
+          # ============================================================
+
+          prompt = f"""
+          Eres Cal Bot, el editor de noticias de CAL FAMILY,
+          una comunidad dedicada a Grand Theft Auto VI.
+
+          Debes convertir la noticia proporcionada en un
+          BORRADOR profesional para Discord.
+
+          IMPORTANTE:
+
+          Usa únicamente información proporcionada en el
+          título y contenido del artículo.
+
+          Nunca inventes:
+
+          - declaraciones de Rockstar Games
+          - fechas
+          - cifras
+          - características del juego
+          - nombres
+          - rumores
+          - fuentes
+          - información no presente en el material
+
+          Si la noticia contiene análisis, opinión o
+          especulación, debes dejarlo claro.
+
+          ============================================================
+          NOTICIA
+          ============================================================
+
+          TÍTULO:
+          {title}
+
+          ENLACE:
+          {link}
+
+          CONTENIDO:
+          {article_text}
+
+          ============================================================
+          FORMATO
+          ============================================================
+
+          Comienza exactamente con uno de estos:
+
+          🧭 **Noticias**
+
+          o
+
+          🧭 **Análisis**
+
+          Elige "Análisis" si el artículo es principalmente
+          opinión, interpretación o análisis.
+
+          Elige "Noticias" si presenta información factual.
+
+          Después escribe:
+
+          # [Título atractivo en español]
+
+          [Introducción de 1 o 2 párrafos.]
+
+          **El dato que lo pone en perspectiva**
+
+          [Contexto importante.]
+
+          **La señal que más dice**
+
+          [El detalle más interesante.]
+
+          **Por qué importa**
+
+          [Explica por qué esta información es relevante
+          para GTA VI.]
+
+          Si existe una posibilidad de confusión, rumor o
+          especulación, añade:
+
+          ⚠️ **Esto no es un anuncio oficial ni una filtración.**
+
+          Y explica brevemente qué parte es análisis,
+          opinión o especulación.
+
+          ============================================================
+          ESTILO
+          ============================================================
+
+          - Español natural.
+          - Profesional.
+          - Claro.
+          - Atractivo.
+          - Estilo de una página especializada en GTA VI.
+          - No exageres.
+          - No inventes información.
+          - No uses demasiados emojis.
+          - Usa negritas en los datos importantes.
+          - No coloques enlaces dentro del artículo.
+          - No menciones que eres una IA.
+          - No escribas explicaciones fuera del formato.
+          - El texto debe estar listo para Discord.
+
+          Genera únicamente el borrador final.
+          """
+
+          # ============================================================
+          # GEMINI API
+          # ============================================================
+
+          print(
+              "Enviando noticia a Gemini..."
+          )
+
+          payload = {
+              "contents": [
+                  {
+                      "parts": [
+                          {
+                              "text": prompt
+                          }
+                      ]
+                  }
+              ],
+              "generationConfig": {
+                  "temperature": 0.4,
+                  "maxOutputTokens": 1400
+              }
+          }
+
+          response = requests.post(
+              GEMINI_URL,
+              params={
+                  "key": GEMINI_KEY
+              },
+              headers={
+                  "Content-Type":
+                      "application/json"
+              },
+              json=payload,
+              timeout=90
+          )
+
+          if not response.ok:
+
+              print("========================================")
+              print("ERROR DE GEMINI")
+              print(
+                  f"HTTP {response.status_code}"
+              )
+              print(response.text)
+              print("========================================")
+
+              exit(1)
+
+          data = response.json()
+
+          # ============================================================
+          # EXTRAER RESPUESTA DE GEMINI
+          # ============================================================
+
+          try:
+
+              ai_text = (
+                  data["candidates"][0]
+                  ["content"]
+                  ["parts"][0]
+                  ["text"]
+                  .strip()
+              )
+
+          except Exception:
+
+              print(
+                  "Gemini respondió, pero no "
+                  "pudimos extraer el texto."
+              )
+
+              print(
+                  json.dumps(
+                      data,
+                      indent=2,
+                      ensure_ascii=False
+                  )
+              )
+
+              exit(1)
+
+          if not ai_text:
+
+              print(
+                  "Gemini devolvió una respuesta vacía."
+              )
+
+              exit(1)
+
+          print("========================================")
+          print("BORRADOR GENERADO")
+          print("========================================")
+          print(ai_text)
+          print("========================================")
+
+          # ============================================================
+          # FECHA
+          # ============================================================
+
+          today = datetime.now(
+              timezone.utc
+          ).strftime("%d/%m/%Y")
+
+          # ============================================================
+          # MENSAJE FINAL DE DISCORD
+          # ============================================================
+
+          final_message = (
+              "<@&1504921814759903343>\n\n"
+              + ai_text
+              + "\n\n"
+              + f"🔗 **Fuente original:** {link}\n\n"
+              + "⚠️ **REVISIÓN REQUERIDA**\n"
+              + "Este contenido es un borrador. "
+              + "Revisa la información antes de publicarlo "
+              + "en #noticias.\n\n"
+              + f"-# Cal Bot · {today}"
+          )
+
+          # ============================================================
+          # ENVIAR A DISCORD
+          # ============================================================
+
+          discord_payload = {
+              "content": final_message,
+              "username": "Cal Bot",
+              "allowed_mentions": {
+                  "roles": [
+                      "1504921814759903343"
+                  ]
+              }
+          }
+
+          discord_response = requests.post(
+              WEBHOOK,
+              json=discord_payload,
+              timeout=30
+          )
+
+          if not discord_response.ok:
+
+              print("========================================")
+              print("ERROR DE DISCORD")
+              print(
+                  f"HTTP {discord_response.status_code}"
+              )
+              print(discord_response.text)
+              print("========================================")
+
+              exit(1)
+
+          print(
+              "Borrador enviado correctamente a Discord."
+          )
+
+          # ============================================================
+          # GUARDAR NOTICIA COMO PROCESADA
+          # ============================================================
+
+          seen.append(news_id)
+
+          # Mantener únicamente las últimas 500
+          seen = seen[-500:]
+
+          with open(
+              HISTORY_FILE,
+              "w",
+              encoding="utf-8"
+          ) as f:
+
+              json.dump(
+                  seen,
+                  f,
+                  indent=2
+              )
+
+          print(
+              "Noticia guardada en el historial."
+          )
+
+          PY
+
+      - name: Save news history
+        run: |
+          git config user.name "Cal Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add seen_news.json
+
+          if git diff --cached --quiet; then
+            echo "No hay cambios en el historial."
+          else
+            git commit -m "Update GTA VI news history"
+            git push
+          fi
